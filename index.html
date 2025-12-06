@@ -9,7 +9,6 @@
     <!-- FIREBASE SDKs (v8) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-    <!-- Adding Auth just in case rules require it, though we use anonymous -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 
     <style>
@@ -34,7 +33,7 @@
             z-index: -1;
         }
 
-        /* --- LANDING PAGE STYLES --- */
+        /* --- LANDING PAGE --- */
         #landing-page {
             position: fixed;
             inset: 0;
@@ -69,7 +68,7 @@
             margin-top: 1rem;
             display: block;
             text-transform: uppercase;
-            -webkit-text-fill-color: white; /* Reset fill for subtitle */
+            -webkit-text-fill-color: white; 
         }
 
         .note-particle {
@@ -90,7 +89,7 @@
             50% { transform: translateY(-15px); }
         }
 
-        /* --- APP STYLES --- */
+        /* --- UI COMPONENTS --- */
         .glass-panel {
             background: rgba(30, 41, 59, 0.6);
             backdrop-filter: blur(16px);
@@ -124,11 +123,16 @@
         .btn-modern:active { transform: scale(0.96); }
 
         .pad-btn {
-            transition: all 0.15s;
+            transition: all 0.1s;
             position: relative;
             overflow: hidden;
             border-radius: 16px;
             border: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
         }
 
         .pad-btn:active, .pad-btn.active {
@@ -174,7 +178,7 @@
         .view-section.active { display: flex; flex-direction: column; gap: 1rem; animation: fadeIn 0.4s; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* --- UPDATED NAVIGATION DOCK --- */
+        /* --- NAV DOCK --- */
         .nav-dock {
             position: fixed;
             bottom: 15px;
@@ -196,7 +200,6 @@
             -webkit-overflow-scrolling: touch;
             justify-content: space-between;
         }
-        
         .nav-dock::-webkit-scrollbar { display: none; }
         
         .nav-btn {
@@ -214,55 +217,21 @@
             flex: 1;
             min-width: fit-content;
         }
-
         .nav-btn:hover { color: white; background: rgba(255,255,255,0.1); }
-        .nav-btn.active { 
-            color: black; 
-            background-color: #facc15;
-            box-shadow: 0 2px 10px rgba(250, 204, 21, 0.3);
-            transform: scale(1.02);
-        }
+        .nav-btn.active { color: black; background-color: #facc15; box-shadow: 0 2px 10px rgba(250, 204, 21, 0.3); transform: scale(1.02); }
 
         @media (min-width: 768px) {
-            .nav-dock {
-                width: auto;
-                bottom: 25px;
-                padding: 8px;
-                gap: 8px;
-                justify-content: center;
-            }
-            .nav-btn {
-                padding: 12px 24px;
-                font-size: 0.9rem;
-                flex: initial;
-            }
+            .nav-dock { width: auto; bottom: 25px; padding: 8px; gap: 8px; justify-content: center; }
+            .nav-btn { padding: 12px 24px; font-size: 0.9rem; flex: initial; }
         }
 
         input[type=range] { -webkit-appearance: none; background: transparent; }
-        input[type=range]::-webkit-slider-thumb {
-            -webkit-appearance: none; height: 18px; width: 18px; border-radius: 50%;
-            background: #ffffff; cursor: pointer; margin-top: -7px; 
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-        }
-        input[type=range]::-webkit-slider-runnable-track {
-            width: 100%; height: 4px; cursor: pointer;
-            background: rgba(255,255,255,0.2); border-radius: 2px;
-        }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 18px; width: 18px; border-radius: 50%; background: #ffffff; cursor: pointer; margin-top: -7px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: rgba(255,255,255,0.2); border-radius: 2px; }
         
-        .karaoke-word {
-            transition: color 0.2s, transform 0.2s;
-            display: inline-block;
-            margin-right: 6px;
-            line-height: 1.4;
-        }
+        .karaoke-word { transition: color 0.2s, transform 0.2s; display: inline-block; margin-right: 6px; line-height: 1.4; }
         .karaoke-active { color: #facc15; transform: scale(1.1); text-shadow: 0 0 15px #facc15; }
-
-        .game-flash {
-            filter: brightness(2) contrast(1.2);
-            transform: scale(1.05);
-            box-shadow: 0 0 30px currentColor;
-            z-index: 10;
-        }
+        .game-flash { filter: brightness(2) contrast(1.2); transform: scale(1.05); box-shadow: 0 0 30px currentColor; z-index: 10; }
     </style>
 </head>
 <body class="min-h-screen flex flex-col items-center">
@@ -316,7 +285,8 @@
                     <h2 class="text-xl font-bold text-cyan-400">🎹 Beat Maker</h2>
                     <button id="clear-beats-btn" class="btn-modern text-xs bg-slate-700/50 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/50 px-3 py-1.5 transition-colors">Clear Pattern</button>
                 </div>
-                <div class="grid grid-cols-4 gap-2 md:gap-4" id="pad-container">
+                <!-- Updated grid to 5 columns for smaller buttons and more width -->
+                <div class="grid grid-cols-5 gap-2" id="pad-container">
                     <!-- Pads injected by JS -->
                 </div>
             </div>
@@ -377,7 +347,6 @@
                 
                 <textarea id="story-input" class="w-full h-32 bg-slate-800/50 border border-slate-600/50 rounded-xl p-4 text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 focus:bg-slate-800 transition-all text-base leading-relaxed resize-none" placeholder="Once there was a little robot who loved to dance in the rain..."></textarea>
                 
-                <!-- Voice Selector -->
                 <div class="mt-4 flex flex-col md:flex-row gap-3">
                     <label class="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center">🎙️ Select AI Singer:</label>
                     <div class="flex gap-2 flex-grow">
@@ -659,19 +628,35 @@
         });
 
         // --- STUDIO LOGIC ---
+        // Enhanced Drums & Expanded Grid (5x4 = 20 Pads)
         const pads = [
-            { id: 0, name: 'Kick', color: 'bg-red-500', type: 'drum', freq: 150 },
-            { id: 1, name: 'Snare', color: 'bg-orange-500', type: 'noise', freq: 1000 },
-            { id: 2, name: 'Hi-Hat', color: 'bg-yellow-500', type: 'noise', freq: 5000 },
-            { id: 3, name: 'Clap', color: 'bg-amber-600', type: 'noise', freq: 1500 },
-            { id: 4, name: 'Laser', color: 'bg-green-500', type: 'synth', freq: 800, slide: true },
-            { id: 5, name: 'Bass', color: 'bg-emerald-600', type: 'synth', freq: 65, typeW: 'square' },
-            { id: 6, name: 'Magic', color: 'bg-teal-500', type: 'synth', freq: 600, magic: true },
-            { id: 7, name: 'Zap', color: 'bg-cyan-500', type: 'synth', freq: 1200, slide: true },
-            { id: 8, name: 'C Maj', color: 'bg-blue-500', type: 'chord', notes: [261, 329, 392] },
-            { id: 9, name: 'F Maj', color: 'bg-indigo-500', type: 'chord', notes: [349, 440, 523] },
-            { id: 10, name: 'G Maj', color: 'bg-violet-500', type: 'chord', notes: [392, 493, 587] },
-            { id: 11, name: 'A Min', color: 'bg-purple-500', type: 'chord', notes: [440, 523, 659] },
+            // Row 1: Power Drums (Kicks & Toms)
+            { id: 0, name: 'Kick', icon: '🥁', color: 'bg-red-600', type: 'drum', freq: 150 },
+            { id: 16, name: 'Deep Kick', icon: '💣', color: 'bg-red-800', type: 'deepkick' }, // NEW
+            { id: 12, name: 'Tom', icon: '🪘', color: 'bg-red-500', type: 'tom' },
+            { id: 17, name: 'Floor Tom', icon: '📉', color: 'bg-red-700', type: 'floortom' }, // NEW
+            { id: 18, name: 'Elec Tom', icon: '👾', color: 'bg-pink-600', type: 'electom' }, // NEW
+
+            // Row 2: Snare & Metals
+            { id: 1, name: 'Snare', icon: '🥢', color: 'bg-orange-500', type: 'snare' },
+            { id: 19, name: 'Rimshot', icon: '📍', color: 'bg-orange-400', type: 'rimshot' }, // NEW
+            { id: 3, name: 'Clap', icon: '👏', color: 'bg-amber-500', type: 'clap' },
+            { id: 2, name: 'Hi-Hat', icon: '📀', color: 'bg-yellow-500', type: 'hat' },
+            { id: 14, name: 'Open Hat', icon: '💿', color: 'bg-yellow-400', type: 'openhat' },
+
+            // Row 3: Percussion & FX
+            { id: 13, name: 'Shaker', icon: '🧂', color: 'bg-orange-300', type: 'shaker' },
+            { id: 15, name: 'Cowbell', icon: '🔔', color: 'bg-amber-400', type: 'cowbell' },
+            { id: 4, name: 'Laser', icon: '🔫', color: 'bg-green-600', type: 'synth', freq: 800, slide: true },
+            { id: 7, name: 'Zap', icon: '⚡', color: 'bg-cyan-600', type: 'synth', freq: 1200, slide: true },
+            { id: 6, name: 'Magic', icon: '✨', color: 'bg-teal-500', type: 'synth', freq: 600, magic: true },
+
+            // Row 4: Melodic
+            { id: 5, name: 'Bass', icon: '🎸', color: 'bg-emerald-600', type: 'synth', freq: 65, typeW: 'square' },
+            { id: 8, name: 'C Maj', icon: '🎹', color: 'bg-blue-600', type: 'chord', notes: [261, 329, 392] },
+            { id: 9, name: 'F Maj', icon: '🎹', color: 'bg-indigo-600', type: 'chord', notes: [349, 440, 523] },
+            { id: 10, name: 'G Maj', icon: '🎹', color: 'bg-violet-600', type: 'chord', notes: [392, 493, 587] },
+            { id: 11, name: 'A Min', icon: '🎹', color: 'bg-purple-600', type: 'chord', notes: [440, 523, 659] },
         ];
         
         function generatePads() {
@@ -680,8 +665,9 @@
             pads.forEach(pad => {
                 const btn = document.createElement('button');
                 btn.id = `pad-${pad.id}`;
-                btn.className = `pad-btn w-full aspect-square rounded-2xl ${pad.color} text-white font-bold text-sm md:text-xl shadow-lg border border-white/10`;
-                btn.innerText = pad.name;
+                // Reduced text size slightly for 5-column layout
+                btn.className = `pad-btn w-full aspect-square rounded-xl ${pad.color} text-white font-bold text-[10px] md:text-sm shadow-lg border border-white/10`;
+                btn.innerHTML = `<span class="text-lg md:text-2xl filter drop-shadow-md">${pad.icon}</span><span class="text-[8px] md:text-[10px] uppercase tracking-wide opacity-90 leading-none">${pad.name}</span>`;
                 const trigger = (e) => {
                     if(e.cancelable) e.preventDefault(); 
                     playPad(pad);
@@ -700,7 +686,125 @@
             const now = audioCtx.currentTime;
             const gain = audioCtx.createGain();
             gain.connect(analyser);
-            if (pad.type === 'drum' || pad.type === 'synth' || pad.type === 'chord') {
+
+            // --- KICKS ---
+            if (pad.type === 'drum') { // Standard Kick
+                const osc = audioCtx.createOscillator();
+                osc.frequency.setValueAtTime(pad.freq, now);
+                osc.frequency.exponentialRampToValueAtTime(0.01, now + 0.5);
+                gain.gain.setValueAtTime(1, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                osc.connect(gain); osc.start(now); osc.stop(now + 0.5);
+            }
+            else if (pad.type === 'deepkick') { // Sub Bass Kick
+                const osc = audioCtx.createOscillator();
+                osc.frequency.setValueAtTime(60, now);
+                osc.frequency.exponentialRampToValueAtTime(30, now + 0.8);
+                gain.gain.setValueAtTime(1, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+                osc.connect(gain); osc.start(now); osc.stop(now + 0.8);
+            }
+
+            // --- TOMS ---
+            else if (pad.type === 'tom') {
+                const osc = audioCtx.createOscillator();
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.exponentialRampToValueAtTime(80, now + 0.3);
+                gain.gain.setValueAtTime(0.8, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.connect(gain); osc.start(now); osc.stop(now + 0.3);
+            }
+            else if (pad.type === 'floortom') {
+                const osc = audioCtx.createOscillator();
+                osc.type = 'triangle'; // Thicker sound
+                osc.frequency.setValueAtTime(120, now);
+                osc.frequency.exponentialRampToValueAtTime(40, now + 0.5);
+                gain.gain.setValueAtTime(0.9, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                osc.connect(gain); osc.start(now); osc.stop(now + 0.5);
+            }
+            else if (pad.type === 'electom') { // Simmons style
+                const osc = audioCtx.createOscillator();
+                osc.type = 'square'; // Digital sound
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.linearRampToValueAtTime(50, now + 0.2);
+                // Filter to smooth the square wave
+                const filt = audioCtx.createBiquadFilter();
+                filt.type = 'lowpass'; filt.frequency.value = 600;
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.connect(filt).connect(gain); osc.start(now); osc.stop(now + 0.2);
+            }
+
+            // --- SNARES & METALS ---
+            else if (pad.type === 'snare') {
+                const osc = audioCtx.createOscillator();
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(180, now);
+                const oscGain = audioCtx.createGain();
+                oscGain.gain.setValueAtTime(0.5, now); oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.connect(oscGain); oscGain.connect(gain); osc.start(now); osc.stop(now+0.2);
+                
+                const buf = audioCtx.createBuffer(1, audioCtx.sampleRate*0.4, audioCtx.sampleRate);
+                const d = buf.getChannelData(0); for(let i=0; i<d.length; i++) d[i] = Math.random()*2-1;
+                const src = audioCtx.createBufferSource(); src.buffer = buf;
+                const filt = audioCtx.createBiquadFilter(); filt.type = 'highpass'; filt.frequency.value = 800;
+                gain.gain.setValueAtTime(0.8, now); gain.gain.exponentialRampToValueAtTime(0.01, now+0.3);
+                src.connect(filt).connect(gain); src.start(now);
+            }
+            else if (pad.type === 'rimshot') {
+                const osc = audioCtx.createOscillator();
+                osc.frequency.setValueAtTime(800, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.05);
+                gain.gain.setValueAtTime(0.6, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                osc.connect(gain); osc.start(now); osc.stop(now + 0.05);
+            }
+            else if (pad.type === 'hat') {
+                const buf = audioCtx.createBuffer(1, audioCtx.sampleRate*0.1, audioCtx.sampleRate);
+                const d = buf.getChannelData(0); for(let i=0; i<d.length; i++) d[i] = Math.random()*2-1;
+                const src = audioCtx.createBufferSource(); src.buffer = buf;
+                const filt = audioCtx.createBiquadFilter(); filt.type = 'highpass'; filt.frequency.value = 6000;
+                gain.gain.setValueAtTime(0.4, now); gain.gain.exponentialRampToValueAtTime(0.01, now+0.08);
+                src.connect(filt).connect(gain); src.start(now);
+            }
+            else if (pad.type === 'openhat') {
+                const buf = audioCtx.createBuffer(1, audioCtx.sampleRate*0.5, audioCtx.sampleRate);
+                const d = buf.getChannelData(0); for(let i=0; i<d.length; i++) d[i] = Math.random()*2-1;
+                const src = audioCtx.createBufferSource(); src.buffer = buf;
+                const filt = audioCtx.createBiquadFilter(); filt.type = 'highpass'; filt.frequency.value = 4000;
+                gain.gain.setValueAtTime(0.4, now); gain.gain.exponentialRampToValueAtTime(0.01, now+0.4);
+                src.connect(filt).connect(gain); src.start(now);
+            }
+            // CLAP
+            else if (pad.type === 'clap') {
+                const buf = audioCtx.createBuffer(1, audioCtx.sampleRate*0.4, audioCtx.sampleRate);
+                const d = buf.getChannelData(0); for(let i=0; i<d.length; i++) d[i] = Math.random()*2-1;
+                const src = audioCtx.createBufferSource(); src.buffer = buf;
+                const filt = audioCtx.createBiquadFilter(); filt.type = 'bandpass'; filt.frequency.value = 1500;
+                gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.8, now + 0.01); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                src.connect(filt).connect(gain); src.start(now);
+            }
+            // PERCUSSION
+            else if (pad.type === 'shaker') {
+                const buf = audioCtx.createBuffer(1, audioCtx.sampleRate*0.1, audioCtx.sampleRate);
+                const d = buf.getChannelData(0); for(let i=0; i<d.length; i++) d[i] = Math.random()*2-1;
+                const src = audioCtx.createBufferSource(); src.buffer = buf;
+                const filt = audioCtx.createBiquadFilter(); filt.type = 'highpass'; filt.frequency.value = 3000;
+                gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now+0.05);
+                src.connect(filt).connect(gain); src.start(now);
+            }
+            else if (pad.type === 'cowbell') {
+                const osc1 = audioCtx.createOscillator(); osc1.type = 'square'; osc1.frequency.value = 580;
+                const osc2 = audioCtx.createOscillator(); osc2.type = 'square'; osc2.frequency.value = 840;
+                const mixGain = audioCtx.createGain(); mixGain.gain.value = 0.3;
+                osc1.connect(mixGain); osc2.connect(mixGain);
+                const filt = audioCtx.createBiquadFilter(); filt.type = 'bandpass'; filt.frequency.value = 1000;
+                mixGain.connect(filt).connect(gain);
+                gain.gain.setValueAtTime(0.6, now); gain.gain.exponentialRampToValueAtTime(0.01, now+0.2);
+                osc1.start(now); osc2.start(now); osc1.stop(now+0.2); osc2.stop(now+0.2);
+            }
+            // SYNTHS
+            else if (pad.type === 'synth' || pad.type === 'chord') {
                 const oscs = pad.notes || [pad.freq];
                 oscs.forEach(f => {
                     const osc = audioCtx.createOscillator();
@@ -720,18 +824,6 @@
                     osc.connect(gain);
                     osc.start(now); osc.stop(now+0.5);
                 });
-            } else { 
-                const buf = audioCtx.createBuffer(1, audioCtx.sampleRate*0.2, audioCtx.sampleRate);
-                const d = buf.getChannelData(0);
-                for(let i=0; i<d.length; i++) d[i] = Math.random()*2-1;
-                const src = audioCtx.createBufferSource();
-                src.buffer = buf;
-                const filt = audioCtx.createBiquadFilter();
-                filt.type = 'highpass'; filt.frequency.value = pad.freq;
-                gain.gain.setValueAtTime(0.5, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now+0.2);
-                src.connect(filt).connect(gain);
-                src.start(now);
             }
             triggerStageEffect('beat');
         }
