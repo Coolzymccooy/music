@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# Visual Studio Code
+# ------------------------------------------------------------
+.vscode/
+*.code-workspace
+
+# VSCode local history (extensions)
+.history/
+.localhistory/
+
+# ------------------------------------------------------------
+# Node.js / npm / yarn
+# ------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+yarn-error.log*
+package-lock.json
+pnpm-lock.yaml
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+log.txt
+debug.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# ------------------------------------------------------------
+# Build output
+# ------------------------------------------------------------
+dist/
+build/
+out/
+coverage/
+temp/
+tmp/
+cache/
+.cache/
+
+# ------------------------------------------------------------
+# OS-specific files
+# ------------------------------------------------------------
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Linux
+*~
+.nfs*
+
+# ------------------------------------------------------------
+# Editors / Tools
+# ------------------------------------------------------------
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# ------------------------------------------------------------
+# Temporary or generated files
+# ------------------------------------------------------------
+*.tmp
+*.temp
+*.swp
+*.lock
+*.pid
+
+# TypeScript
+*.tsbuildinfo
