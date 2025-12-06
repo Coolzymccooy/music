@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tiwaton - Sonic Magic Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FIREBASE SDKs (v8) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <!-- Adding Auth just in case rules require it, though we use anonymous -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&family=Outfit:wght@800&display=swap');
+
+        body {
+            font-family: 'Fredoka', sans-serif;
+            background-color: #0f172a;
+            color: white;
+            overflow-x: hidden;
+            touch-action: manipulation;
+            margin: 0;
+        }
+
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+
+        .hidden-visually {
+            opacity: 0;
+            pointer-events: none;
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+        }
+
+        /* --- LANDING PAGE STYLES --- */
+        #landing-page {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: radial-gradient(circle at center, #2e1065 0%, #020617 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.6s ease-in-out;
+        }
+        
+        .hero-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: clamp(4rem, 15vw, 8rem);
+            font-weight: 900;
+            text-align: center;
+            line-height: 0.9;
+            background: linear-gradient(to bottom right, #f472b6, #a78bfa, #22d3ee);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 50px rgba(167, 139, 250, 0.3);
+            margin-bottom: 2rem;
+            animation: heroFloat 5s ease-in-out infinite;
+        }
+
+        .subtitle-hero {
+            font-family: 'Fredoka', sans-serif;
+            font-size: clamp(1.2rem, 4vw, 2.5rem);
+            letter-spacing: 0.1em;
+            color: rgba(255, 255, 255, 0.8);
+            margin-top: 1rem;
+            display: block;
+            text-transform: uppercase;
+            -webkit-text-fill-color: white; /* Reset fill for subtitle */
+        }
+
+        .note-particle {
+            position: absolute;
+            color: rgba(255,255,255,0.2);
+            font-size: 2rem;
+            animation: floatUp linear infinite;
+        }
+
+        @keyframes floatUp {
+            0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+            20% { opacity: 0.8; }
+            100% { transform: translateY(-20vh) rotate(360deg); opacity: 0; }
+        }
+
+        @keyframes heroFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-15px); }
+        }
+
+        /* --- APP STYLES --- */
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+        }
+
+        .mixer-panel {
+            border: 1px solid rgba(250, 204, 21, 0.3);
+            background: linear-gradient(145deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.9));
+        }
+        
+        .tuner-panel {
+            background: linear-gradient(135deg, #4c1d95 0%, #2563eb 100%);
+            border: 1px solid #a78bfa;
+        }
+
+        .btn-modern {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 12px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .btn-modern:active { transform: scale(0.96); }
+
+        .pad-btn {
+            transition: all 0.15s;
+            position: relative;
+            overflow: hidden;
+            border-radius: 16px;
+            border: none;
+        }
+
+        .pad-btn:active, .pad-btn.active {
+            transform: scale(0.95);
+            filter: brightness(1.3);
+            box-shadow: 0 0 15px currentColor;
+        }
+
+        .recording-pulse { animation: pulse-red 1.5s infinite; }
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        .effect-btn {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .effect-btn.selected, .nav-btn.active, .voice-btn.selected {
+            background-color: #facc15; 
+            color: #000;
+            border-color: #facc15;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(250, 204, 21, 0.4);
+            font-weight: 800;
+        }
+        
+        .pro-tuner-btn.selected {
+            background: linear-gradient(90deg, #ec4899, #8b5cf6);
+            color: white;
+            border: 1px solid white;
+            box-shadow: 0 0 15px rgba(236, 72, 153, 0.6);
+        }
+
+        canvas {
+            border-radius: 16px;
+            width: 100%;
+            background: #020617;
+        }
+
+        .view-section { display: none; }
+        .view-section.active { display: flex; flex-direction: column; gap: 1rem; animation: fadeIn 0.4s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* --- UPDATED NAVIGATION DOCK --- */
+        .nav-dock {
+            position: fixed;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255,255,255,0.15);
+            padding: 5px;
+            border-radius: 99px;
+            display: flex;
+            gap: 4px;
+            z-index: 999;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.7);
+            width: 96%;
+            max-width: 600px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            justify-content: space-between;
+        }
+        
+        .nav-dock::-webkit-scrollbar { display: none; }
+        
+        .nav-btn {
+            padding: 10px 12px;
+            border-radius: 99px;
+            color: #94a3b8;
+            font-weight: 700;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            flex: 1;
+            min-width: fit-content;
+        }
+
+        .nav-btn:hover { color: white; background: rgba(255,255,255,0.1); }
+        .nav-btn.active { 
+            color: black; 
+            background-color: #facc15;
+            box-shadow: 0 2px 10px rgba(250, 204, 21, 0.3);
+            transform: scale(1.02);
+        }
+
+        @media (min-width: 768px) {
+            .nav-dock {
+                width: auto;
+                bottom: 25px;
+                padding: 8px;
+                gap: 8px;
+                justify-content: center;
+            }
+            .nav-btn {
+                padding: 12px 24px;
+                font-size: 0.9rem;
+                flex: initial;
+            }
+        }
+
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 18px; width: 18px; border-radius: 50%;
+            background: #ffffff; cursor: pointer; margin-top: -7px; 
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px; cursor: pointer;
+            background: rgba(255,255,255,0.2); border-radius: 2px;
+        }
+        
+        .karaoke-word {
+            transition: color 0.2s, transform 0.2s;
+            display: inline-block;
+            margin-right: 6px;
+            line-height: 1.4;
+        }
+        .karaoke-active { color: #facc15; transform: scale(1.1); text-shadow: 0 0 15px #facc15; }
+
+        .game-flash {
+            filter: brightness(2) contrast(1.2);
+            transform: scale(1.05);
+            box-shadow: 0 0 30px currentColor;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center">
+
+    <!-- LANDING PAGE -->
+    <div id="landing-page">
+        <div id="particles-container"></div>
+        <h1 class="hero-title">
+            Tiwaton
+            <span class="subtitle-hero">Sonic Magic Studio</span>
+        </h1>
+        <p class="text-lg md:text-xl text-purple-200 mb-8 max-w-md text-center px-6">Where Stories Become Songs & Beats Come to Life!</p>
+        <button id="enter-btn" class="group relative px-10 py-5 bg-white rounded-full text-xl md:text-2xl font-bold text-indigo-900 shadow-[0_0_40px_rgba(255,255,255,0.4)] hover:scale-105 transition-transform overflow-hidden">
+            <span class="relative z-10">✨ Enter Studio</span>
+            <div class="absolute inset-0 bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 opacity-0 group-hover:opacity-20 transition-opacity"></div>
+        </button>
+    </div>
+
+    <!-- MAIN APP CONTAINER -->
+    <div id="app-container" class="w-full max-w-5xl px-3 md:px-6 mt-4 flex-grow hidden pb-28">
+        
+        <!-- HEADER -->
+        <div class="flex justify-between items-center mb-5 px-1">
+            <div class="flex items-center gap-3">
+                <button id="exit-btn" class="btn-modern bg-slate-800 hover:bg-slate-700 px-3 py-2 text-lg shadow-lg border-slate-600" title="Return Home">
+                    🏠
+                </button>
+                <h1 class="text-xl md:text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 hidden xs:block">Tiwaton</h1>
+            </div>
+            
+            <div id="user-profile" class="flex items-center gap-2 bg-slate-800/80 px-4 py-2 rounded-full text-xs font-semibold border border-slate-700 shadow-md">
+                <span>👤 Creator</span>
+                <span class="text-green-400 animate-pulse">●</span>
+            </div>
+        </div>
+
+        <!-- VIEW: STUDIO -->
+        <div id="view-studio" class="view-section active">
+            <!-- Header & Visualizer -->
+            <div class="glass-panel p-4 flex flex-col gap-3">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-lg font-bold text-yellow-400 flex items-center gap-2">⚡ Visualizer</h2>
+                    <span id="status-indicator" class="text-[10px] md:text-xs uppercase tracking-wider font-bold bg-slate-700/50 px-3 py-1 rounded-full text-slate-300 border border-slate-600">Ready</span>
+                </div>
+                <canvas id="visualizer" class="h-24 md:h-32 w-full"></canvas>
+            </div>
+
+            <!-- Beat Maker -->
+            <div class="glass-panel p-5">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-cyan-400">🎹 Beat Maker</h2>
+                    <button id="clear-beats-btn" class="btn-modern text-xs bg-slate-700/50 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/50 px-3 py-1.5 transition-colors">Clear Pattern</button>
+                </div>
+                <div class="grid grid-cols-4 gap-2 md:gap-4" id="pad-container">
+                    <!-- Pads injected by JS -->
+                </div>
+            </div>
+
+            <!-- Voice & Effects -->
+            <div class="glass-panel p-5">
+                <h2 class="text-xl font-bold mb-4 text-pink-500">🎤 Voice Magic</h2>
+                <div class="flex flex-col md:flex-row gap-6">
+                    <div class="flex flex-col gap-4 items-center justify-center flex-shrink-0 md:w-1/3">
+                        <button id="record-btn" class="w-20 h-20 md:w-24 md:h-24 rounded-full bg-slate-700 border-4 border-slate-600 flex items-center justify-center transition-all hover:bg-slate-600 hover:scale-105 active:scale-95 shadow-xl">
+                            <svg id="mic-icon" class="w-8 h-8 md:w-10 md:h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+                        </button>
+                        <div class="flex gap-2 w-full justify-center">
+                            <button id="play-recording-btn" disabled class="btn-modern px-4 py-2 bg-green-600/80 hover:bg-green-500 text-white text-xs md:text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed w-full">▶ Play</button>
+                            <button id="loop-btn" disabled class="btn-modern px-4 py-2 bg-indigo-600/80 hover:bg-indigo-500 text-white text-xs md:text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed w-full">🔁 Loop</button>
+                        </div>
+                         <button id="save-track-btn" class="btn-modern w-full py-2 bg-blue-600/80 hover:bg-blue-500 text-white text-xs md:text-sm shadow-lg">💾 Save Track</button>
+                    </div>
+
+                    <div class="flex-1 bg-slate-800/30 rounded-2xl p-4 flex flex-col gap-3 border border-white/5">
+                        <div class="grid grid-cols-2 gap-2 h-full">
+                            <button class="btn-modern effect-btn selected text-xs p-2" data-effect="normal">Normal</button>
+                            <button class="btn-modern effect-btn text-xs p-2" data-effect="chipmunk">🐿️ Chipmunk</button>
+                            <button class="btn-modern effect-btn text-xs p-2" data-effect="monster">👹 Monster</button>
+                            <button class="btn-modern effect-btn text-xs p-2" data-effect="robot">🤖 Robot</button>
+                        </div>
+                        <button id="pro-tuner-toggle" class="pro-tuner-btn w-full py-3 rounded-xl bg-slate-700/50 hover:bg-slate-700 font-bold text-sm flex items-center justify-center gap-2 border border-white/10 transition-all">
+                            ⭐ Pro-Tuner Studio
+                        </button>
+                    </div>
+                </div>
+
+                <div id="tuner-console" class="hidden mt-4 tuner-panel p-5 rounded-2xl animate-fadeIn">
+                    <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">🎛️ Auto-Tune Settings</h3>
+                    <div class="grid grid-cols-3 gap-3">
+                        <div class="bg-black/20 p-3 rounded-xl border border-white/5"><label class="block text-[10px] font-bold text-pink-200 mb-2">PITCH</label><input type="range" id="tune-pitch" min="0.5" max="2.0" step="0.1" value="1.0" class="w-full"></div>
+                        <div class="bg-black/20 p-3 rounded-xl border border-white/5"><label class="block text-[10px] font-bold text-blue-200 mb-2">WOBBLE</label><input type="range" id="tune-robot" min="0" max="100" value="0" class="w-full"></div>
+                        <div class="bg-black/20 p-3 rounded-xl border border-white/5"><label class="block text-[10px] font-bold text-purple-200 mb-2">REVERB</label><input type="range" id="tune-reverb" min="0" max="100" value="20" class="w-full"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-panel mixer-panel p-4 flex gap-4 items-center sticky bottom-24 md:static z-30 shadow-2xl">
+                <span class="text-2xl filter drop-shadow-md">🎚️</span>
+                <div class="flex-1">
+                    <label class="text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1 block">Voice Volume</label>
+                    <input type="range" id="voice-vol" min="0" max="1.5" step="0.05" value="1" class="w-full h-2 bg-slate-700 rounded-lg accent-yellow-400">
+                </div>
+                 <button id="stop-all-btn" class="btn-modern bg-red-600 hover:bg-red-500 py-3 px-4 text-white font-bold text-xs shadow-lg border-red-400/30 whitespace-nowrap">🛑 STOP ALL</button>
+            </div>
+        </div>
+
+        <!-- VIEW: STORY MAGIC -->
+        <div id="view-story" class="view-section">
+            <div class="glass-panel p-6 bg-gradient-to-br from-indigo-900/80 to-slate-900/80 border border-indigo-500/30">
+                <h2 class="text-2xl md:text-3xl font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-purple-400">✨ AI Story-to-Song</h2>
+                <p class="text-slate-300 mb-5 text-sm md:text-base">Write a story, choose a voice, and I'll sing it smartly!</p>
+                
+                <textarea id="story-input" class="w-full h-32 bg-slate-800/50 border border-slate-600/50 rounded-xl p-4 text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 focus:bg-slate-800 transition-all text-base leading-relaxed resize-none" placeholder="Once there was a little robot who loved to dance in the rain..."></textarea>
+                
+                <!-- Voice Selector -->
+                <div class="mt-4 flex flex-col md:flex-row gap-3">
+                    <label class="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center">🎙️ Select AI Singer:</label>
+                    <div class="flex gap-2 flex-grow">
+                        <button class="voice-btn btn-modern flex-1 py-2 text-xs selected" data-voice="star">⭐ Star (Energy)</button>
+                        <button class="voice-btn btn-modern flex-1 py-2 text-xs" data-voice="buddy">🐻 Buddy (Friendly)</button>
+                        <button class="voice-btn btn-modern flex-1 py-2 text-xs" data-voice="sage">🦉 Sage (Calm)</button>
+                    </div>
+                </div>
+
+                <div class="flex gap-2 mt-5">
+                     <button id="magic-btn" class="btn-modern flex-1 py-4 bg-gradient-to-r from-fuchsia-600 to-purple-600 rounded-xl text-lg font-bold shadow-lg hover:scale-[1.02] active:scale-95 border-0">
+                        🪄 Compose Song
+                    </button>
+                </div>
+            </div>
+
+            <!-- Immersive Story Player -->
+            <div id="story-player" class="glass-panel p-0 hidden animate-fadeIn relative overflow-hidden min-h-[400px] flex flex-col">
+                <div class="absolute inset-0 bg-gradient-to-t from-purple-900/80 via-slate-900/50 to-transparent pointer-events-none"></div>
+
+                <div class="relative z-10 flex flex-col h-full p-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-lg md:text-xl font-bold text-yellow-300 flex items-center gap-2">🎶 Now Performing</h3>
+                        <div class="flex gap-2">
+                            <button id="export-studio-btn" class="btn-modern bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 text-xs font-bold shadow-lg gap-1 border-0">
+                                🎛️ Remix
+                            </button>
+                             <button id="stop-story-btn" class="btn-modern bg-slate-700/80 hover:bg-slate-600 text-white px-3 py-1.5 text-xs border-0">Close</button>
+                        </div>
+                    </div>
+                    
+                    <div id="karaoke-display" class="flex-grow text-xl md:text-3xl font-bold text-center leading-relaxed flex flex-wrap justify-center items-center gap-x-2 gap-y-1 mb-8 p-6 bg-black/20 rounded-2xl border border-white/5 backdrop-blur-sm">
+                        <!-- Lyrics go here -->
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4 mt-auto">
+                         <button id="remix-beat-btn" class="btn-modern p-4 bg-cyan-900/40 hover:bg-cyan-800/60 rounded-xl border-cyan-500/30 text-cyan-200 text-sm font-bold border">
+                            🎲 Remix Beat
+                        </button>
+                        <button id="ai-sing-btn" class="btn-modern p-4 bg-pink-900/40 hover:bg-pink-800/60 rounded-xl border-pink-500/30 text-pink-200 text-sm font-bold border relative overflow-hidden">
+                            <span class="relative z-10">🤖 Smart Sing It!</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW: GAMES -->
+        <div id="view-games" class="view-section">
+            <h2 class="text-2xl md:text-3xl font-bold text-center text-green-400 mb-4">🎮 Music Games</h2>
+            <div class="glass-panel p-6 text-center max-w-md mx-auto">
+                <h3 class="text-xl font-bold text-white mb-2">🥁 Rhythm Mimic</h3>
+                <p class="text-slate-400 mb-6 text-sm">Watch the pads light up, then repeat the pattern!</p>
+                <div id="game-status" class="text-2xl font-black text-yellow-400 mb-6 h-10 flex items-center justify-center">Press Start!</div>
+                <div class="grid grid-cols-2 gap-4 mb-8">
+                    <button id="game-pad-0" class="aspect-square bg-red-500 rounded-2xl shadow-lg opacity-80 border-4 border-transparent transition-all active:scale-95"></button>
+                    <button id="game-pad-1" class="aspect-square bg-blue-500 rounded-2xl shadow-lg opacity-80 border-4 border-transparent transition-all active:scale-95"></button>
+                    <button id="game-pad-2" class="aspect-square bg-green-500 rounded-2xl shadow-lg opacity-80 border-4 border-transparent transition-all active:scale-95"></button>
+                    <button id="game-pad-3" class="aspect-square bg-yellow-500 rounded-2xl shadow-lg opacity-80 border-4 border-transparent transition-all active:scale-95"></button>
+                </div>
+                <button id="start-game-btn" class="btn-modern px-10 py-4 bg-green-600 rounded-full font-bold text-lg hover:bg-green-500 shadow-xl hover:scale-105 border-0 w-full">Start Level 1</button>
+            </div>
+        </div>
+
+        <!-- VIEW: CONCERT STAGE -->
+        <div id="view-concert" class="view-section">
+            <h2 class="text-2xl md:text-3xl font-bold text-center text-purple-400 mb-4">🎆 Magic Concert Stage</h2>
+            
+            <div class="relative w-full aspect-video glass-panel overflow-hidden bg-black flex items-center justify-center border-2 border-slate-700 rounded-2xl shadow-2xl">
+                <!-- Stage Canvas -->
+                <canvas id="stage-canvas" class="absolute inset-0 w-full h-full"></canvas>
+                
+                <div class="absolute top-4 right-4 flex gap-2">
+                    <button class="world-btn btn-modern bg-black/40 hover:bg-black/60 text-white p-2 rounded-lg backdrop-blur-md text-xs border-white/20" data-world="space">🚀</button>
+                    <button class="world-btn btn-modern bg-black/40 hover:bg-black/60 text-white p-2 rounded-lg backdrop-blur-md text-xs border-white/20" data-world="disco">💃</button>
+                    <button class="world-btn btn-modern bg-black/40 hover:bg-black/60 text-white p-2 rounded-lg backdrop-blur-md text-xs border-white/20" data-world="sea">🐠</button>
+                </div>
+
+                <div class="absolute bottom-4 left-4 right-4 flex justify-center flex-wrap gap-3 bg-black/60 p-3 rounded-2xl backdrop-blur-md border border-white/10">
+                    <button class="stage-ctrl text-2xl hover:scale-125 transition active:scale-90" data-action="confetti">🎉</button>
+                    <button class="stage-ctrl text-2xl hover:scale-125 transition active:scale-90" data-action="fireworks">🎆</button>
+                    <button class="stage-ctrl text-2xl hover:scale-125 transition active:scale-90" data-action="lasers">⚡</button>
+                    <button class="stage-ctrl text-2xl hover:scale-125 transition active:scale-90" data-action="bubbles">🫧</button>
+                    <div class="w-px bg-white/20 mx-1 hidden md:block"></div>
+                    <button class="stage-ctrl text-2xl hover:scale-125 transition active:scale-90" data-char="cat">🐱</button>
+                    <button class="stage-ctrl text-2xl hover:scale-125 transition active:scale-90" data-char="robot">🤖</button>
+                    <button class="stage-ctrl text-2xl hover:scale-125 transition active:scale-90" data-char="alien">👽</button>
+                </div>
+            </div>
+            <div class="glass-panel p-3 text-center mt-2 bg-indigo-900/30 border-0">
+                <p class="text-xs md:text-sm text-slate-300">Play music in the <b>Studio</b> to see the characters dance!</p>
+            </div>
+        </div>
+
+        <!-- VIEW: GALLERY -->
+        <div id="view-gallery" class="view-section">
+            <h2 class="text-2xl md:text-3xl font-bold text-center text-blue-400 mb-4">💾 Family Gallery</h2>
+            <div class="glass-panel p-6 min-h-[50vh] flex flex-col">
+                <div id="gallery-list" class="flex flex-col gap-3 max-h-[50vh] overflow-y-auto pr-2 flex-grow">
+                    <div class="flex flex-col items-center justify-center h-40 text-slate-500 animate-pulse">
+                        <span class="text-4xl mb-2">☁️</span>
+                        <p>Connecting to Tiwaton Cloud...</p>
+                    </div>
+                </div>
+                <button id="clear-gallery" class="mt-6 btn-modern text-xs bg-red-900/20 text-red-300 border-red-800/30 w-full py-3 hover:bg-red-900/40">Clear All Data</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- NAV DOCK -->
+    <nav id="nav-dock" class="nav-dock hidden">
+        <button class="nav-btn active" data-target="view-studio">🎹 Studio</button>
+        <button class="nav-btn" data-target="view-story">✨ Story</button>
+        <button class="nav-btn" data-target="view-games">🎮 Games</button>
+        <button class="nav-btn" data-target="view-concert">🎆 Stage</button>
+        <button class="nav-btn" data-target="view-gallery">💾 Gallery</button>
+    </nav>
+
+    <script>
+        // --- FIREBASE INIT ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyAuc_qVtzxpk1EeahGt-_KoBEMxOTdBm5U",
+            authDomain: "tiwaton-family-adventure.firebaseapp.com",
+            projectId: "tiwaton-family-adventure",
+            storageBucket: "tiwaton-family-adventure.firebasestorage.app",
+            messagingSenderId: "53083980470",
+            appId: "1:53083980470:web:dc41aa974cda42eaf61c17"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        // Anonymous Auth (Best Practice for R/W access to Firestore)
+        firebase.auth().signInAnonymously().catch(err => console.log("Auth Error (Check Rules):", err));
+
+        // --- MOTHER APP INTEGRATION BRIDGE ---
+        const urlParams = new URLSearchParams(window.location.search);
+        const embeddedChildName = urlParams.get('childName');
+        const isEmbedded = window.self !== window.top;
+
+        if (embeddedChildName) {
+            document.querySelector('#user-profile span:first-child').innerText = '👤 ' + embeddedChildName;
+        }
+
+        // Listen for commands from the Host App
+        window.addEventListener('message', (event) => {
+            // Handle messages like { type: 'SET_USER', name: 'Alice' }
+            if (event.data?.type === 'SET_USER') {
+                 document.querySelector('#user-profile span:first-child').innerText = '👤 ' + event.data.name;
+            }
+        });
+
+        function notifyHost(type, data) {
+            if(isEmbedded) {
+                window.parent.postMessage({ source: 'sonic-magic', type, data }, '*');
+            }
+        }
+
+        // --- Shared Audio Engine ---
+        let audioCtx, analyser, dataArray;
+        let compressorNode, voiceGainNode;
+        let impulseBuffer;
+        let activeSourceNode = null;
+        let isRecording = false, mediaRecorder, chunks = [], recordedAudioBuffer = null;
+        let recordedBlob = null;
+        let animationFrameIds = {}; 
+        
+        // --- UI State ---
+        let currentEffect = 'normal';
+        let isMuted = false;
+        let activeStoryBeat = null;
+        let isStoryModeAIActive = false;
+        let appActive = false;
+        let selectedVoice = 'star'; 
+        
+        // --- Particle System ---
+        function createParticles() {
+            const container = document.getElementById('particles-container');
+            container.innerHTML = ''; 
+            const notes = ['♪', '♫', '♬', '♩'];
+            for(let i=0; i<15; i++) {
+                const el = document.createElement('div');
+                el.className = 'note-particle';
+                el.innerText = notes[Math.floor(Math.random() * notes.length)];
+                el.style.left = Math.random() * 100 + 'vw';
+                el.style.animationDuration = (Math.random() * 3 + 5) + 's';
+                el.style.animationDelay = Math.random() * 5 + 's';
+                container.appendChild(el);
+            }
+        }
+        createParticles();
+
+        // --- Init Audio ---
+        async function initAudio() {
+            if(audioCtx) {
+                if(audioCtx.state === 'suspended') await audioCtx.resume();
+                return;
+            }
+
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+            
+            const length = audioCtx.sampleRate * 2.0;
+            impulseBuffer = audioCtx.createBuffer(2, length, audioCtx.sampleRate);
+            for (let i=0; i<length; i++) {
+                const n = i/length;
+                const noise = (Math.random()*2-1)*Math.pow(1-n, 3);
+                impulseBuffer.getChannelData(0)[i] = noise;
+                impulseBuffer.getChannelData(1)[i] = noise;
+            }
+
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 256;
+            dataArray = new Uint8Array(analyser.frequencyBinCount);
+            analyser.connect(audioCtx.destination); 
+
+            compressorNode = audioCtx.createDynamicsCompressor();
+            voiceGainNode = audioCtx.createGain();
+            compressorNode.connect(voiceGainNode);
+            voiceGainNode.connect(analyser);
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.ondataavailable = e => chunks.push(e.data);
+                mediaRecorder.onstop = async () => {
+                    recordedBlob = new Blob(chunks, { 'type' : 'audio/ogg; codecs=opus' });
+                    chunks = [];
+                    const ab = await recordedBlob.arrayBuffer();
+                    recordedAudioBuffer = await audioCtx.decodeAudioData(ab);
+                    document.getElementById('play-recording-btn').disabled = false;
+                    document.getElementById('play-recording-btn').classList.remove('opacity-50');
+                    document.getElementById('loop-btn').disabled = false;
+                    document.getElementById('loop-btn').classList.remove('opacity-50');
+                };
+            } catch(e) { console.log("Mic access denied or error"); }
+        }
+
+        // --- View Transitions ---
+        function enterStudio() {
+            appActive = true;
+            initAudio();
+            document.getElementById('landing-page').classList.add('hidden-visually');
+            document.getElementById('app-container').classList.remove('hidden');
+            document.getElementById('nav-dock').classList.remove('hidden');
+            document.getElementById('nav-dock').style.display = 'flex';
+            drawVisualizer();
+            drawStage();
+            initGalleryListener(); // Start listening to Firebase
+            notifyHost('OPENED', {});
+        }
+
+        function exitStudio() {
+            appActive = false;
+            document.getElementById('app-container').classList.add('hidden');
+            document.getElementById('nav-dock').classList.add('hidden');
+            document.getElementById('landing-page').classList.remove('hidden-visually');
+            if(activeSourceNode) activeSourceNode.stop();
+            if(storyInterval) clearInterval(storyInterval);
+            if(window.studioLoop) clearInterval(window.studioLoop);
+            if(audioCtx) audioCtx.suspend();
+            window.speechSynthesis.cancel();
+            createParticles();
+            notifyHost('CLOSED', {});
+        }
+
+        document.getElementById('enter-btn').addEventListener('click', enterStudio);
+        document.getElementById('exit-btn').addEventListener('click', exitStudio);
+
+        // --- Navigation ---
+        const navButtons = document.querySelectorAll('.nav-btn');
+        const views = document.querySelectorAll('.view-section');
+        navButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                navButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                views.forEach(v => v.classList.remove('active'));
+                document.getElementById(btn.dataset.target).classList.add('active');
+            });
+        });
+
+        // --- STUDIO LOGIC ---
+        const pads = [
+            { id: 0, name: 'Kick', color: 'bg-red-500', type: 'drum', freq: 150 },
+            { id: 1, name: 'Snare', color: 'bg-orange-500', type: 'noise', freq: 1000 },
+            { id: 2, name: 'Hi-Hat', color: 'bg-yellow-500', type: 'noise', freq: 5000 },
+            { id: 3, name: 'Clap', color: 'bg-amber-600', type: 'noise', freq: 1500 },
+            { id: 4, name: 'Laser', color: 'bg-green-500', type: 'synth', freq: 800, slide: true },
+            { id: 5, name: 'Bass', color: 'bg-emerald-600', type: 'synth', freq: 65, typeW: 'square' },
+            { id: 6, name: 'Magic', color: 'bg-teal-500', type: 'synth', freq: 600, magic: true },
+            { id: 7, name: 'Zap', color: 'bg-cyan-500', type: 'synth', freq: 1200, slide: true },
+            { id: 8, name: 'C Maj', color: 'bg-blue-500', type: 'chord', notes: [261, 329, 392] },
+            { id: 9, name: 'F Maj', color: 'bg-indigo-500', type: 'chord', notes: [349, 440, 523] },
+            { id: 10, name: 'G Maj', color: 'bg-violet-500', type: 'chord', notes: [392, 493, 587] },
+            { id: 11, name: 'A Min', color: 'bg-purple-500', type: 'chord', notes: [440, 523, 659] },
+        ];
+        
+        function generatePads() {
+            const container = document.getElementById('pad-container');
+            container.innerHTML = '';
+            pads.forEach(pad => {
+                const btn = document.createElement('button');
+                btn.id = `pad-${pad.id}`;
+                btn.className = `pad-btn w-full aspect-square rounded-2xl ${pad.color} text-white font-bold text-sm md:text-xl shadow-lg border border-white/10`;
+                btn.innerText = pad.name;
+                const trigger = (e) => {
+                    if(e.cancelable) e.preventDefault(); 
+                    playPad(pad);
+                    btn.classList.add('active');
+                    setTimeout(() => btn.classList.remove('active'), 150);
+                };
+                btn.addEventListener('mousedown', trigger);
+                btn.addEventListener('touchstart', trigger);
+                container.appendChild(btn);
+            });
+        }
+        generatePads();
+
+        function playPad(pad) {
+            if (!audioCtx || audioCtx.state === 'suspended') return;
+            const now = audioCtx.currentTime;
+            const gain = audioCtx.createGain();
+            gain.connect(analyser);
+            if (pad.type === 'drum' || pad.type === 'synth' || pad.type === 'chord') {
+                const oscs = pad.notes || [pad.freq];
+                oscs.forEach(f => {
+                    const osc = audioCtx.createOscillator();
+                    osc.type = pad.typeW || (pad.type === 'drum' ? 'sine' : 'triangle');
+                    osc.frequency.setValueAtTime(f, now);
+                    if (pad.slide) osc.frequency.exponentialRampToValueAtTime(f/2, now+0.3);
+                    if (pad.magic) {
+                        const lfo = audioCtx.createOscillator();
+                        lfo.frequency.value = 20;
+                        const lfoG = audioCtx.createGain();
+                        lfoG.gain.value = 500;
+                        lfo.connect(lfoG).connect(osc.frequency);
+                        lfo.start(now);
+                    }
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                    osc.connect(gain);
+                    osc.start(now); osc.stop(now+0.5);
+                });
+            } else { 
+                const buf = audioCtx.createBuffer(1, audioCtx.sampleRate*0.2, audioCtx.sampleRate);
+                const d = buf.getChannelData(0);
+                for(let i=0; i<d.length; i++) d[i] = Math.random()*2-1;
+                const src = audioCtx.createBufferSource();
+                src.buffer = buf;
+                const filt = audioCtx.createBiquadFilter();
+                filt.type = 'highpass'; filt.frequency.value = pad.freq;
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now+0.2);
+                src.connect(filt).connect(gain);
+                src.start(now);
+            }
+            triggerStageEffect('beat');
+        }
+
+        // --- GAMES LOGIC (Rhythm Mimic) ---
+        let gameLevel = 1;
+        let gameSequence = [];
+        let playerSequence = [];
+        let isGameActive = false;
+        
+        document.getElementById('start-game-btn').onclick = startGame;
+        
+        for(let i=0; i<4; i++) {
+            const btn = document.getElementById(`game-pad-${i}`);
+            btn.onclick = () => handleGameInput(i);
+        }
+
+        function startGame() {
+            if (!audioCtx) initAudio();
+            gameLevel = 1;
+            gameSequence = [];
+            playerSequence = [];
+            isGameActive = false;
+            document.getElementById('start-game-btn').classList.add('hidden');
+            nextLevel();
+        }
+
+        function nextLevel() {
+            playerSequence = [];
+            isGameActive = false;
+            document.getElementById('game-status').innerText = `Level ${gameLevel}: Watch!`;
+            document.getElementById('game-status').className = "text-2xl font-black text-blue-400 mb-6 h-10 flex items-center justify-center animate-pulse";
+            gameSequence.push(Math.floor(Math.random() * 4));
+            let i = 0;
+            const interval = setInterval(() => {
+                if (i >= gameSequence.length) {
+                    clearInterval(interval);
+                    isGameActive = true; 
+                    document.getElementById('game-status').innerText = "Your Turn!";
+                    document.getElementById('game-status').className = "text-2xl font-black text-yellow-400 mb-6 h-10 flex items-center justify-center";
+                    return;
+                }
+                flashGamePad(gameSequence[i]);
+                i++;
+            }, 800);
+        }
+
+        function flashGamePad(padId) {
+            const btn = document.getElementById(`game-pad-${padId}`);
+            if(btn) {
+                btn.classList.add('game-flash');
+                setTimeout(() => btn.classList.remove('game-flash'), 400);
+                playPad(pads[padId]); 
+            }
+        }
+
+        function handleGameInput(padId) {
+            if (!isGameActive) return;
+            flashGamePad(padId);
+            playerSequence.push(padId);
+            const currentIdx = playerSequence.length - 1;
+            if (playerSequence[currentIdx] !== gameSequence[currentIdx]) {
+                gameOver();
+            } else {
+                if (playerSequence.length === gameSequence.length) {
+                    levelComplete();
+                }
+            }
+        }
+
+        function levelComplete() {
+            isGameActive = false;
+            document.getElementById('game-status').innerText = "✅ Great Job!";
+            document.getElementById('game-status').className = "text-2xl font-black text-green-400 mb-6 h-10 flex items-center justify-center";
+            gameLevel++;
+            setTimeout(nextLevel, 1500);
+        }
+
+        function gameOver() {
+            isGameActive = false;
+            document.getElementById('game-status').innerText = "❌ Oops! Try Again.";
+            document.getElementById('game-status').className = "text-2xl font-black text-red-400 mb-6 h-10 flex items-center justify-center";
+            const startBtn = document.getElementById('start-game-btn');
+            startBtn.innerText = "Restart Game";
+            startBtn.classList.remove('hidden');
+        }
+
+        // --- STORY MAGIC ---
+        let storyInterval = null;
+        let storyTempo = 500;
+        
+        document.querySelectorAll('.voice-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.voice-btn').forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                selectedVoice = btn.dataset.voice;
+            });
+        });
+
+        document.getElementById('magic-btn').onclick = () => {
+            const text = document.getElementById('story-input').value;
+            if(!text.trim()) return alert("Write a story first!");
+            document.getElementById('view-story').querySelector('.glass-panel').classList.add('hidden');
+            document.getElementById('story-player').classList.remove('hidden');
+            const display = document.getElementById('karaoke-display');
+            display.innerHTML = text.split(' ').map(w => `<span class="karaoke-word">${w}</span>`).join(' ');
+            createProceduralBeat(text);
+            startStoryLoop();
+            startKaraoke(text);
+        };
+
+        function createProceduralBeat(text) {
+            const isHappy = text.includes('happy') || text.includes('fun') || text.includes('sun');
+            const isFast = text.includes('run') || text.includes('fast') || text.includes('race');
+            storyTempo = isFast ? 300 : (isHappy ? 400 : 600);
+            activeStoryBeat = [ [0, 2], [], [1, 2], [5] ];
+            if(isHappy) activeStoryBeat[1].push(8); else activeStoryBeat[1].push(11); 
+        }
+
+        document.getElementById('remix-beat-btn').onclick = () => {
+            activeStoryBeat = [
+                Math.random() > 0.5 ? [0] : [0, 2],
+                Math.random() > 0.5 ? [2] : [8],
+                Math.random() > 0.5 ? [1] : [1, 2],
+                Math.random() > 0.5 ? [5] : [4]
+            ];
+        };
+
+        function startStoryLoop() {
+            if(storyInterval) clearInterval(storyInterval);
+            let beatIndex = 0;
+            storyInterval = setInterval(() => {
+                if(appActive) {
+                    const currentStep = activeStoryBeat[beatIndex % 4];
+                    currentStep.forEach(padId => playPad(pads[padId]));
+                    beatIndex++;
+                }
+            }, storyTempo);
+        }
+
+        function startKaraoke(text) {
+            const words = document.querySelectorAll('.karaoke-word');
+            let i = 0;
+            const interval = setInterval(() => {
+                if(!storyInterval || i >= words.length) {
+                    clearInterval(interval);
+                    return;
+                }
+                words.forEach(w => w.classList.remove('karaoke-active'));
+                words[i].classList.add('karaoke-active');
+                i++;
+            }, storyTempo); 
+        }
+
+        document.getElementById('ai-sing-btn').onclick = () => {
+            const text = document.getElementById('story-input').value;
+            if ('speechSynthesis' in window) {
+                const synth = window.speechSynthesis;
+                synth.cancel();
+                const voices = synth.getVoices();
+                let targetVoice = null;
+                const enVoices = voices.filter(v => v.lang.startsWith('en'));
+                
+                if (selectedVoice === 'star') {
+                    targetVoice = enVoices.find(v => v.name.includes('Google US English')) || enVoices.find(v => v.name.includes('Samantha')) || enVoices[0];
+                } else if (selectedVoice === 'buddy') {
+                    targetVoice = enVoices.find(v => v.name.includes('Google UK English Male')) || enVoices.find(v => v.name.includes('Daniel')) || enVoices[1] || enVoices[0];
+                } else { 
+                     targetVoice = enVoices.find(v => v.name.includes('Zira')) || enVoices.find(v => v.name.includes('Moira')) || enVoices[enVoices.length - 1] || enVoices[0];
+                }
+
+                const phrases = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
+
+                phrases.forEach((phrase, index) => {
+                    const utterance = new SpeechSynthesisUtterance(phrase.trim());
+                    if(targetVoice) utterance.voice = targetVoice;
+                    if (selectedVoice === 'star') {
+                        utterance.pitch = 1.4; utterance.rate = 1.2;
+                    } else if (selectedVoice === 'buddy') {
+                        utterance.pitch = 1.0; utterance.rate = 1.0;
+                    } else { 
+                        utterance.pitch = 0.8; utterance.rate = 0.9;
+                    }
+                    if (phrase.includes('?')) utterance.pitch += 0.2; 
+                    if (phrase.includes('!')) { utterance.rate += 0.1; utterance.volume = 1; } 
+                    else { utterance.volume = 0.9; }
+                    synth.speak(utterance);
+                });
+            } else { alert("Smart Sing not supported on this browser."); }
+        };
+
+        document.getElementById('export-studio-btn').onclick = () => {
+            if(!activeStoryBeat) return;
+            document.getElementById('stop-story-btn').click();
+            document.querySelector('[data-target="view-studio"]').click();
+            alert("Beat loaded into Studio! Playing now...");
+            if(window.studioLoop) clearInterval(window.studioLoop);
+            let beatIndex = 0;
+            window.studioLoop = setInterval(() => {
+                if(appActive) {
+                    const currentStep = activeStoryBeat[beatIndex % 4];
+                    currentStep.forEach(padId => {
+                        playPad(pads[padId]);
+                        const btn = document.getElementById(`pad-${padId}`);
+                        if(btn) {
+                            btn.style.borderColor = "white";
+                            setTimeout(() => btn.style.borderColor = "rgba(255,255,255,0.1)", 100);
+                        }
+                    });
+                    beatIndex++;
+                }
+            }, storyTempo);
+        };
+        
+        document.getElementById('clear-beats-btn').onclick = () => {
+            if(window.studioLoop) clearInterval(window.studioLoop);
+            window.studioLoop = null;
+        };
+
+        document.getElementById('stop-story-btn').onclick = () => {
+            if(storyInterval) clearInterval(storyInterval);
+            storyInterval = null;
+            window.speechSynthesis.cancel();
+            document.getElementById('story-player').classList.add('hidden');
+            document.getElementById('view-story').querySelector('.glass-panel').classList.remove('hidden');
+        };
+
+        // --- CONCERT STAGE ---
+        const stageCanvas = document.getElementById('stage-canvas');
+        const sCtx = stageCanvas.getContext('2d');
+        let stageObjects = [];
+        let activeChar = '🐱';
+        let currentWorld = 'space';
+        
+        function resizeStage() {
+            stageCanvas.width = stageCanvas.offsetWidth;
+            stageCanvas.height = stageCanvas.offsetHeight;
+        }
+        window.addEventListener('resize', resizeStage);
+        resizeStage();
+
+        document.querySelectorAll('.stage-ctrl').forEach(btn => {
+            btn.onclick = () => {
+                const action = btn.dataset.action;
+                const char = btn.dataset.char;
+                if(char) activeChar = (char === 'cat') ? '🐱' : (char === 'robot' ? '🤖' : '👽');
+                if(action) triggerStageEffect(action);
+            };
+        });
+        
+        document.querySelectorAll('.world-btn').forEach(btn => {
+            btn.onclick = () => currentWorld = btn.dataset.world;
+        });
+
+        function triggerStageEffect(type) {
+            if(type === 'confetti' || type === 'beat') {
+                for(let i=0; i<8; i++) stageObjects.push({
+                    type: 'confetti', x: Math.random()*stageCanvas.width, y: 0, 
+                    vy: Math.random()*5+2, color: `hsl(${Math.random()*360}, 100%, 50%)`
+                });
+            }
+            if(type === 'bubbles') {
+                for(let i=0; i<5; i++) stageObjects.push({
+                    type: 'bubble', x: Math.random()*stageCanvas.width, y: stageCanvas.height, 
+                    vy: -(Math.random()*2+1), r: Math.random()*10+5
+                });
+            }
+            if(type === 'fireworks') {
+                stageObjects.push({
+                    type: 'firework', x: Math.random()*stageCanvas.width, y: stageCanvas.height,
+                    targetY: Math.random()*(stageCanvas.height/2), vy: -12, exploded: false, particles: []
+                });
+            }
+        }
+
+        function drawStage() {
+            if(appActive) {
+                requestAnimationFrame(drawStage);
+            } else {
+                setTimeout(drawStage, 500); 
+                return;
+            }
+
+            // Background
+            if(currentWorld === 'space') {
+                 sCtx.fillStyle = '#020617';
+                 sCtx.fillRect(0,0,stageCanvas.width, stageCanvas.height);
+                 if(Math.random() > 0.9) sCtx.fillStyle = '#fff'; else sCtx.fillStyle = 'transparent';
+                 sCtx.fillRect(Math.random()*stageCanvas.width, Math.random()*stageCanvas.height, 2, 2);
+            } else if (currentWorld === 'disco') {
+                 sCtx.fillStyle = `hsl(${Date.now()/50}, 50%, 10%)`;
+                 sCtx.fillRect(0,0,stageCanvas.width, stageCanvas.height);
+            } else { 
+                 sCtx.fillStyle = '#0c4a6e';
+                 sCtx.fillRect(0,0,stageCanvas.width, stageCanvas.height);
+            }
+            
+            // Spotlights
+            sCtx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+            sCtx.beginPath();
+            sCtx.moveTo(0, 0); sCtx.lineTo(stageCanvas.width/3, stageCanvas.height); sCtx.lineTo(0, stageCanvas.height);
+            sCtx.fill();
+            sCtx.beginPath();
+            sCtx.moveTo(stageCanvas.width, 0); sCtx.lineTo(stageCanvas.width*0.66, stageCanvas.height); sCtx.lineTo(stageCanvas.width, stageCanvas.height);
+            sCtx.fill();
+
+            // Character
+            sCtx.font = "80px Arial";
+            sCtx.textAlign = "center";
+            let bounce = dataArray ? dataArray[5] / 8 : 0;
+            sCtx.fillText(activeChar, stageCanvas.width/2, stageCanvas.height - 50 - bounce);
+
+            // Objects
+            stageObjects.forEach((obj, idx) => {
+                if(obj.type === 'confetti') {
+                    sCtx.fillStyle = obj.color;
+                    sCtx.fillRect(obj.x, obj.y, 6, 6);
+                    obj.y += obj.vy;
+                    if(obj.y > stageCanvas.height) stageObjects.splice(idx, 1);
+                }
+                else if(obj.type === 'bubble') {
+                    sCtx.strokeStyle = 'rgba(255,255,255,0.5)';
+                    sCtx.beginPath(); sCtx.arc(obj.x, obj.y, obj.r, 0, Math.PI*2); sCtx.stroke();
+                    obj.y += obj.vy; obj.x += Math.sin(obj.y/20);
+                    if(obj.y < -50) stageObjects.splice(idx, 1);
+                }
+                else if(obj.type === 'firework') {
+                    if(!obj.exploded) {
+                        sCtx.fillStyle = '#fff';
+                        sCtx.fillRect(obj.x, obj.y, 4, 4);
+                        obj.y += obj.vy;
+                        if(obj.y <= obj.targetY) {
+                            obj.exploded = true;
+                            for(let j=0; j<20; j++) obj.particles.push({x: obj.x, y: obj.y, vx: Math.random()*4-2, vy: Math.random()*4-2, life: 1, color: `hsl(${Math.random()*360},100%,50%)`});
+                        }
+                    } else {
+                        obj.particles.forEach(p => {
+                            sCtx.fillStyle = p.color;
+                            sCtx.globalAlpha = p.life;
+                            sCtx.fillRect(p.x, p.y, 3, 3);
+                            sCtx.globalAlpha = 1;
+                            p.x += p.vx; p.y += p.vy; p.life -= 0.02;
+                        });
+                        if(obj.particles[0].life <= 0) stageObjects.splice(idx, 1);
+                    }
+                }
+            });
+        }
+        
+        function drawVisualizer() {
+            if(appActive) {
+                requestAnimationFrame(drawVisualizer);
+            } else {
+                return;
+            }
+            if(!analyser) return;
+            const c = document.getElementById('visualizer');
+            const ctx = c.getContext('2d');
+            analyser.getByteFrequencyData(dataArray);
+            ctx.fillStyle = '#020617'; 
+            ctx.fillRect(0, 0, c.width, c.height);
+            const w = (c.width / dataArray.length) * 2.5;
+            let x = 0;
+            for(let i = 0; i < dataArray.length; i++) {
+                const h = dataArray[i] / 2;
+                ctx.fillStyle = `hsl(${i*2}, 100%, 50%)`;
+                ctx.fillRect(x, c.height - h, w, h);
+                x += w + 1;
+            }
+        }
+
+        document.getElementById('record-btn').onclick = function() {
+            if(!isRecording) {
+                mediaRecorder.start(); isRecording = true;
+                this.classList.add('recording-pulse', 'bg-red-600');
+            } else {
+                mediaRecorder.stop(); isRecording = false;
+                this.classList.remove('recording-pulse', 'bg-red-600');
+            }
+        };
+        document.getElementById('play-recording-btn').onclick = () => {
+             if(!recordedAudioBuffer) return;
+             if(activeSourceNode) activeSourceNode.stop();
+             const src = audioCtx.createBufferSource();
+             src.buffer = recordedAudioBuffer;
+             src.connect(voiceGainNode);
+             src.start();
+             activeSourceNode = src;
+        };
+        document.getElementById('stop-all-btn').onclick = () => {
+            if(activeSourceNode) activeSourceNode.stop();
+            if(storyInterval) clearInterval(storyInterval);
+            if(window.studioLoop) clearInterval(window.studioLoop);
+            window.speechSynthesis.cancel();
+        };
+
+        // --- FIREBASE GALLERY LOGIC ---
+        
+        function saveToGallery(item) {
+            // Adds to Firestore instead of LocalStorage
+            db.collection("sonic_gallery").add({
+                ...item,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp() // For ordering
+            })
+            .then(() => {
+                console.log("Document successfully written!");
+                notifyHost('SAVED', item);
+            })
+            .catch((error) => {
+                console.error("Error writing document: ", error);
+                alert("Failed to save to cloud. Check console.");
+            });
+        }
+
+        function initGalleryListener() {
+            const list = document.getElementById('gallery-list');
+            
+            // Listen for updates in real-time
+            db.collection("sonic_gallery")
+                .orderBy("timestamp", "desc")
+                .limit(20)
+                .onSnapshot((querySnapshot) => {
+                    list.innerHTML = '';
+                    if (querySnapshot.empty) {
+                        list.innerHTML = `<div class="flex flex-col items-center justify-center h-40 text-slate-500"><span class="text-4xl mb-2">📂</span><p>Gallery is empty.</p></div>`;
+                        return;
+                    }
+                    querySnapshot.forEach((doc) => {
+                        const item = doc.data();
+                        const div = document.createElement('div');
+                        div.className = 'bg-slate-700 p-3 rounded-lg flex justify-between items-center mb-2 animate-fadeIn';
+                        div.innerHTML = `<div><div class="font-bold text-sm text-yellow-300">${item.type === 'story' ? '📖' : '🎤'} ${item.title}</div><div class="text-xs text-slate-400">${item.date}</div></div>`;
+                        list.appendChild(div);
+                    });
+                }, (error) => {
+                    console.error("Error getting gallery: ", error);
+                    list.innerHTML = `<p class="text-red-400 text-center text-xs">Error loading gallery.</p>`;
+                });
+        }
+
+        document.getElementById('clear-gallery').onclick = () => { 
+            if(confirm("Delete ALL cloud data?")) {
+                db.collection("sonic_gallery").get().then((querySnapshot) => {
+                    querySnapshot.forEach((doc) => {
+                        doc.ref.delete();
+                    });
+                });
+            }
+        };
+
+        // Wrappers for buttons
+        document.getElementById('save-track-btn').onclick = () => { 
+            saveToGallery({type: 'recording', title: "My Cool Track", date: new Date().toLocaleTimeString()}); 
+            alert("Saving to Cloud..."); 
+        };
+
+    </script>
+</body>
+</html>
