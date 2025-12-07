@@ -80,8 +80,8 @@
 
         @keyframes floatUp {
             0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
-            20% { opacity: 0.8; }
-            100% { transform: translateY(-20vh) rotate(360deg); opacity: 0; }
+            50% { transform: translateY(-15px); }
+            100% { transform: translateY(0px); }
         }
 
         @keyframes heroFloat {
@@ -173,6 +173,13 @@
             background-color: #4f46e5;
             border-color: #818cf8;
             box-shadow: 0 0 15px rgba(79, 70, 229, 0.5);
+        }
+        
+        .mastered {
+             background-color: #facc15 !important;
+             color: black !important;
+             border: 2px solid #fff !important;
+             box-shadow: 0 0 20px #facc15;
         }
 
         canvas {
@@ -343,12 +350,26 @@
                 </div>
                  <button id="stop-all-btn" class="btn-modern bg-red-600 hover:bg-red-500 py-3 px-4 text-white font-bold text-xs shadow-lg border-red-400/30 whitespace-nowrap">🛑 STOP ALL</button>
             </div>
+            
+            <!-- MASTERING CONTROLS (NEW) -->
+            <div class="glass-panel p-5 flex flex-col md:flex-row items-center justify-between gap-4 border-yellow-400/50">
+                <h3 class="text-xl font-bold text-yellow-400">Master Production</h3>
+                <div class="flex gap-4 w-full md:w-auto justify-center">
+                    <button id="master-mix-btn" class="btn-modern px-5 py-3 bg-yellow-600/20 hover:bg-yellow-500/50 text-yellow-300 text-sm font-bold border-yellow-400/30 transition-colors">
+                        ⭐ Master Mix
+                    </button>
+                    <button id="play-master-btn" class="btn-modern px-5 py-3 bg-green-700/80 hover:bg-green-600 text-white text-sm font-bold shadow-lg border-green-500/30">
+                        ▶ Play Master Output
+                    </button>
+                </div>
+            </div>
+
         </div>
 
         <!-- VIEW: STORY MAGIC -->
         <div id="view-story" class="view-section">
             <div class="glass-panel p-6 bg-gradient-to-br from-indigo-900/80 to-slate-900/80 border border-indigo-500/30">
-                <h2 class="text-2xl md:text-3xl font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-purple-400">✨ AI Story-to-Song</h2>
+                <h2 class="text-2xl md:text-3xl font-bold mb-2 text-transparent bg-clip-clip bg-gradient-to-r from-pink-400 to-purple-400">✨ AI Story-to-Song</h2>
                 <p class="text-slate-300 mb-5 text-sm md:text-base">Write a story, choose a voice, and I'll sing it smartly!</p>
                 
                 <textarea id="story-input" class="w-full h-32 bg-slate-800/50 border border-slate-600/50 rounded-xl p-4 text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 focus:bg-slate-800 transition-all text-base leading-relaxed resize-none" placeholder="Once there was a little robot who loved to dance in the rain..."></textarea>
@@ -671,15 +692,13 @@
                 btn.innerHTML = `<span class="text-lg md:text-2xl filter drop-shadow-md">${pad.icon}</span><span class="text-[8px] md:text-[10px] uppercase tracking-wide opacity-90 leading-none">${pad.name}</span>`;
                 const trigger = (e) => {
                     // Prevent both mousedown and touchstart from firing
-                    if (e.type === 'touchstart') {
-                        e.preventDefault();
-                    }
+                    if (e.cancelable) e.preventDefault();
                     playPad(pad);
                     btn.classList.add('active');
                     setTimeout(() => btn.classList.remove('active'), 150);
                 };
                 
-                // Use pointerdown for a unified event, but if not available, careful fallback
+                // Use pointerdown for a unified event, capturing the pointer to prevent accidental movement/double-hits
                 if (window.PointerEvent) {
                     btn.onpointerdown = (e) => {
                         e.preventDefault();
@@ -689,6 +708,7 @@
                         setTimeout(() => btn.classList.remove('active'), 150);
                     };
                 } else {
+                    // Fallback for older browsers
                     btn.addEventListener('mousedown', trigger);
                     btn.addEventListener('touchstart', trigger);
                 }
@@ -701,13 +721,19 @@
             if (!audioCtx || audioCtx.state === 'suspended') return;
             const now = audioCtx.currentTime;
             const gain = audioCtx.createGain();
-            gain.connect(analyser);
-
+            
+            // Set a higher default gain for all pad sounds
+            const BASE_GAIN = 1.5; 
+            gain.gain.setValueAtTime(BASE_GAIN, now);
+            
+            // Connect pad output to the Master Output Chain (Analyser -> Destination)
+            applyMasteringChain(gain);
+            
+            // --- PAD SOUND LOGIC ---
             if (pad.type === 'drum') {
                 const osc = audioCtx.createOscillator();
                 osc.frequency.setValueAtTime(pad.freq, now);
                 osc.frequency.exponentialRampToValueAtTime(0.01, now + 0.5);
-                gain.gain.setValueAtTime(1, now);
                 gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
                 osc.connect(gain); osc.start(now); osc.stop(now + 0.5);
             }
@@ -715,7 +741,6 @@
                 const osc = audioCtx.createOscillator();
                 osc.frequency.setValueAtTime(60, now);
                 osc.frequency.exponentialRampToValueAtTime(30, now + 0.8);
-                gain.gain.setValueAtTime(1, now);
                 gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
                 osc.connect(gain); osc.start(now); osc.stop(now + 0.8);
             }
@@ -726,7 +751,6 @@
                 const endFreq = pad.type === 'electom' ? 50 : (pad.type === 'floortom' ? 40 : 80);
                 osc.frequency.setValueAtTime(startFreq, now);
                 osc.frequency.exponentialRampToValueAtTime(endFreq, now + 0.3);
-                gain.gain.setValueAtTime(0.8, now);
                 gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
                 
                 if(pad.type === 'electom') {
@@ -742,20 +766,20 @@
                 const osc = audioCtx.createOscillator();
                 osc.type = 'triangle'; osc.frequency.setValueAtTime(180, now);
                 const oscGain = audioCtx.createGain();
-                oscGain.gain.setValueAtTime(0.5, now); oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                oscGain.gain.setValueAtTime(0.5 * BASE_GAIN, now); oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
                 osc.connect(oscGain); oscGain.connect(gain); osc.start(now); osc.stop(now+0.2);
                 const buf = audioCtx.createBuffer(1, audioCtx.sampleRate*0.4, audioCtx.sampleRate);
                 const d = buf.getChannelData(0); for(let i=0; i<d.length; i++) d[i] = Math.random()*2-1;
                 const src = audioCtx.createBufferSource(); src.buffer = buf;
                 const filt = audioCtx.createBiquadFilter(); filt.type = 'highpass'; filt.frequency.value = 800;
-                gain.gain.setValueAtTime(0.8, now); gain.gain.exponentialRampToValueAtTime(0.01, now+0.3);
+                gain.gain.setValueAtTime(0.8 * BASE_GAIN, now); gain.gain.exponentialRampToValueAtTime(0.01, now+0.3);
                 src.connect(filt).connect(gain); src.start(now);
             }
             else if (pad.type === 'rimshot') {
                 const osc = audioCtx.createOscillator();
                 osc.frequency.setValueAtTime(800, now);
                 osc.frequency.exponentialRampToValueAtTime(100, now + 0.05);
-                gain.gain.setValueAtTime(0.6, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                gain.gain.setValueAtTime(0.6 * BASE_GAIN, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
                 osc.connect(gain); osc.start(now); osc.stop(now + 0.05);
             }
             else if (pad.type === 'hat' || pad.type === 'openhat' || pad.type === 'shaker') {
@@ -765,7 +789,7 @@
                 const d = buf.getChannelData(0); for(let i=0; i<d.length; i++) d[i] = Math.random()*2-1;
                 const src = audioCtx.createBufferSource(); src.buffer = buf;
                 const filt = audioCtx.createBiquadFilter(); filt.type = 'highpass'; filt.frequency.value = freq;
-                gain.gain.setValueAtTime(0.4, now); gain.gain.exponentialRampToValueAtTime(0.01, now+len);
+                gain.gain.setValueAtTime(0.4 * BASE_GAIN, now); gain.gain.exponentialRampToValueAtTime(0.01, now+len);
                 src.connect(filt).connect(gain); src.start(now);
             }
             else if (pad.type === 'clap') {
@@ -773,17 +797,17 @@
                 const d = buf.getChannelData(0); for(let i=0; i<d.length; i++) d[i] = Math.random()*2-1;
                 const src = audioCtx.createBufferSource(); src.buffer = buf;
                 const filt = audioCtx.createBiquadFilter(); filt.type = 'bandpass'; filt.frequency.value = 1500;
-                gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.8, now + 0.01); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.8 * BASE_GAIN, now + 0.01); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
                 src.connect(filt).connect(gain); src.start(now);
             }
             else if (pad.type === 'cowbell') {
                 const osc1 = audioCtx.createOscillator(); osc1.type = 'square'; osc1.frequency.value = 580;
                 const osc2 = audioCtx.createOscillator(); osc2.type = 'square'; osc2.frequency.value = 840;
-                const mixGain = audioCtx.createGain(); mixGain.gain.value = 0.3;
+                const mixGain = audioCtx.createGain(); mixGain.gain.value = 0.3 * BASE_GAIN;
                 osc1.connect(mixGain); osc2.connect(mixGain);
                 const filt = audioCtx.createBiquadFilter(); filt.type = 'bandpass'; filt.frequency.value = 1000;
                 mixGain.connect(filt).connect(gain);
-                gain.gain.setValueAtTime(0.6, now); gain.gain.exponentialRampToValueAtTime(0.01, now+0.2);
+                gain.gain.setValueAtTime(0.6 * BASE_GAIN, now); gain.gain.exponentialRampToValueAtTime(0.01, now+0.2);
                 osc1.start(now); osc2.start(now); osc1.stop(now+0.2); osc2.stop(now+0.2);
             }
             else if (pad.type === 'synth' || pad.type === 'chord') {
@@ -801,7 +825,7 @@
                         lfo.connect(lfoG).connect(osc.frequency);
                         lfo.start(now);
                     }
-                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.setValueAtTime(0.3 * BASE_GAIN, now);
                     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
                     osc.connect(gain);
                     osc.start(now); osc.stop(now+0.5);
@@ -825,10 +849,11 @@
 
         function startGame() {
             if (!audioCtx) initAudio();
-            gameLevel = 1;
+            gameLevel = 1; // Reset game state variables
             gameSequence = [];
             playerSequence = [];
             isGameActive = false;
+
             document.getElementById('start-game-btn').classList.add('hidden');
             nextLevel();
         }
@@ -919,17 +944,25 @@
             }
         };
 
-        // --- FIXED BUTTON LOGIC ---
+        // --- VOICE EFFECT LOGIC ---
+        
+        // DOM element selection moved here for proper scope/definition
+        const effectBtns = document.querySelectorAll('.effect-btn');
+        const proTunerBtn = document.getElementById('pro-tuner-toggle');
+        const tunerConsole = document.getElementById('tuner-console');
+        const masterMixBtn = document.getElementById('master-mix-btn');
+        const playMasterBtn = document.getElementById('play-master-btn');
+        
+        // Master State
+        let isMastered = false;
         
         // 1. Effects Selection - RESTART PLAYBACK ON CHANGE
-        const effectBtns = document.querySelectorAll('.effect-btn');
         effectBtns.forEach(btn => {
             btn.addEventListener('click', () => {
                 effectBtns.forEach(b => b.classList.remove('selected'));
                 btn.classList.add('selected');
                 currentEffect = btn.dataset.effect;
                 
-                // Smart Restart: If currently playing/looping, restart immediately to apply effect
                 if (activeSourceNode) {
                     startPlayback(true);
                 }
@@ -937,21 +970,19 @@
         });
 
         // 2. Pro-Tuner Toggle
-        const proTunerBtn = document.getElementById('pro-tuner-toggle');
-        const tunerConsole = document.getElementById('tuner-console');
         proTunerBtn.addEventListener('click', () => {
             tunerConsole.classList.toggle('hidden');
             proTunerBtn.classList.toggle('selected');
+            if (activeSourceNode) {
+                 startPlayback(true);
+            }
         });
         
         // Real-time tuner updates
         ['tune-pitch', 'tune-robot', 'tune-reverb'].forEach(id => {
             document.getElementById(id).addEventListener('input', () => {
                 if(activeSourceNode) {
-                    // For simple pitch, we can update live without full restart if in simple mode
-                    // But for complex chain (Robot LFO), restart is safer or we need active node refs
-                    // Given the request for "smart/intelligent", let's update live if possible, else restart
-                    startPlayback(true); // Restart is the cleanest way to guarantee new chain structure
+                    startPlayback(true); 
                 }
             });
         });
@@ -974,13 +1005,100 @@
             if(voiceGainNode) voiceGainNode.gain.value = e.target.value;
         });
 
+        // --- MASTERING LOGIC ---
+        
+        // Master Mix Button Handler
+        masterMixBtn.addEventListener('click', () => {
+            isMastered = !isMastered;
+            masterMixBtn.classList.toggle('mastered', isMastered);
+            
+            // If master is toggled, ensure playback restarts to route through the new chain
+            if (activeSourceNode) {
+                startPlayback(true);
+            }
+        });
+        
+        // Plays both the Beat Loop and Voice Loop together
+        playMasterBtn.addEventListener('click', () => {
+             // Stop previous loops first (voice, story, beat)
+            stopAll(); 
+
+            // 1. Start Voice Loop/Playback (This is handled by startPlayback)
+            if (recordedAudioBuffer) {
+                // Force looping on for Master Playback demonstration
+                isLooping = true;
+                loopBtn.classList.add('loop-active');
+                startPlayback(false); 
+            }
+
+            // 2. Start Beat Loop
+            if (window.studioLoop) clearInterval(window.studioLoop);
+            let beatIndex = 0;
+            const tempo = storyTempo; // Defaulting to story tempo for synchronization
+            
+            window.studioLoop = setInterval(() => {
+                if(activeStoryBeat) { // If there's an active pattern from Story mode
+                    const currentStep = activeStoryBeat[beatIndex % 4];
+                    currentStep.forEach(padId => playPad(pads[padId]));
+                    beatIndex++;
+                } else {
+                    // Fallback: If no story beat, just play the kick
+                     playPad(pads[0]);
+                }
+            }, tempo);
+            
+             // 3. Update Status
+            document.getElementById('status-indicator').innerText = "MASTER OUTPUT";
+            document.getElementById('status-indicator').classList.remove('bg-slate-700/50');
+            document.getElementById('status-indicator').classList.add('bg-yellow-500/80', 'text-black');
+        });
+        
+        function applyMasteringChain(sourceNode) {
+            let lastNode = sourceNode;
+            
+            // Apply Analyzer for Visuals
+            lastNode.connect(analyser);
+
+            if (isMastered) {
+                // 1. High Pass Filter (Clean up low-end mud)
+                const hpf = audioCtx.createBiquadFilter();
+                hpf.type = 'highpass';
+                hpf.frequency.setValueAtTime(30, audioCtx.currentTime);
+                lastNode.connect(hpf);
+                lastNode = hpf;
+
+                // 2. Dynamics Compressor (Make it sound louder and tighter)
+                const comp = audioCtx.createDynamicsCompressor();
+                comp.threshold.setValueAtTime(-15, audioCtx.currentTime);
+                comp.ratio.setValueAtTime(4, audioCtx.currentTime);
+                comp.attack.setValueAtTime(0.005, audioCtx.currentTime);
+                lastNode.connect(comp);
+                lastNode = comp;
+                
+                // 3. Simple Limiter (Prevent clipping)
+                const limiter = audioCtx.createGain();
+                limiter.gain.setValueAtTime(0.9, audioCtx.currentTime); 
+                lastNode.connect(limiter);
+                lastNode = limiter;
+            }
+
+            // Final connection to speakers
+            lastNode.connect(audioCtx.destination);
+        }
+
         // 5. Updated Playback Logic - Extracted to function
+        let currentLfo = null; 
+        
         function startPlayback(isRestart = false) {
              if(!recordedAudioBuffer) return;
              
-             // If this is a restart (e.g. effect change), stop current sound
+             // Stop previous
              if(activeSourceNode) {
                  try { activeSourceNode.stop(); } catch(e){}
+             }
+             if (currentLfo) {
+                 try { currentLfo.stop(); } catch(e){}
+                 currentLfo = null;
              }
 
              const source = audioCtx.createBufferSource();
@@ -989,9 +1107,6 @@
              
              let lastNode = source;
 
-             // --- EFFECT PROCESSING ---
-             // We construct the graph fresh every time based on current settings
-             
              let pitch = 1.0;
              let wobble = 0;
              let reverbAmt = 0;
@@ -1002,10 +1117,10 @@
              } else if (currentEffect === 'monster') {
                  pitch = 0.7;
              } else if (currentEffect === 'robot') {
-                 wobble = 50; // Strong wobble
+                 wobble = 50; 
              }
 
-             // Pro-Tuner Overrides (if visible)
+             // Pro-Tuner Overrides 
              if (!tunerConsole.classList.contains('hidden')) {
                  pitch = parseFloat(document.getElementById('tune-pitch').value);
                  const tunerWobble = parseFloat(document.getElementById('tune-robot').value);
@@ -1017,26 +1132,23 @@
 
              if (wobble > 0) {
                  const lfo = audioCtx.createOscillator();
-                 lfo.frequency.value = wobble / 2; // LFO speed
+                 lfo.frequency.value = wobble / 2;
                  const lfoGain = audioCtx.createGain();
-                 lfoGain.gain.value = 500; // Depth
-                 // For true ring mod robot, we modulate gain, but here we mod pitch for "wobble"
-                 // Or simple ring mod:
+                 lfoGain.gain.value = 500; 
+                 
                  if(currentEffect === 'robot' || wobble > 30) {
-                     // Ring Mod style
                      lfo.connect(lfoGain);
-                     // Create a gain node for the source to be modulated
                      const modGain = audioCtx.createGain();
                      modGain.gain.value = 1.0;
                      lfoGain.connect(modGain.gain);
                      lastNode.connect(modGain);
                      lastNode = modGain;
                  } else {
-                     // Vibrato style
                      lfoGain.gain.value = 0.1;
                      lfo.connect(lfoGain).connect(source.playbackRate);
                  }
                  lfo.start();
+                 currentLfo = lfo; // Store for cleanup
              }
              
              if (reverbAmt > 0 && impulseBuffer) {
@@ -1047,7 +1159,6 @@
                  const dry = audioCtx.createGain();
                  dry.gain.value = 1 - (reverbAmt/200); 
                  
-                 // Split path
                  lastNode.connect(conv);
                  conv.connect(wet);
                  wet.connect(voiceGainNode);
@@ -1056,193 +1167,186 @@
                  lastNode = dry; 
              }
 
+             // Final step for voice layer: connect to the compressor/master bus (voiceGainNode)
              lastNode.connect(voiceGainNode);
+             
+             // Apply Master Mix chain to the voice layer output
+             applyMasteringChain(voiceGainNode);
+
              source.start();
              activeSourceNode = source;
         }
 
         document.getElementById('play-recording-btn').onclick = () => startPlayback(false);
 
-        document.getElementById('stop-all-btn').onclick = () => {
-            if(activeSourceNode) activeSourceNode.stop();
-            if(storyInterval) clearInterval(storyInterval);
-            if(window.studioLoop) clearInterval(window.studioLoop);
-            window.speechSynthesis.cancel();
-        };
+        document.getElementById('stop-all-btn').onclick = () => stopAll();
 
-        // --- STORY MAGIC ---
+        function stopAll() {
+             if(activeSourceNode) {
+                 try { activeSourceNode.stop(); } catch(e){}
+             }
+             if(storyInterval) clearInterval(storyInterval);
+             if(window.studioLoop) clearInterval(window.studioLoop);
+             window.studioLoop = null;
+             window.speechSynthesis.cancel();
+             
+             // Reset UI Status
+             document.getElementById('status-indicator').innerText = "Ready";
+             document.getElementById('status-indicator').classList.remove('bg-yellow-500/80', 'text-black');
+             document.getElementById('status-indicator').classList.add('bg-slate-700/50');
+        }
+
+        // --- VISUALIZERS ---
+        function drawVisualizer() {
+            if(appActive) {
+                requestAnimationFrame(drawVisualizer);
+            } else {
+                return;
+            }
+            if(!analyser) return;
+            const c = document.getElementById('visualizer');
+            const ctx = c.getContext('2d');
+            analyser.getByteFrequencyData(dataArray);
+            ctx.fillStyle = '#020617'; 
+            ctx.fillRect(0, 0, c.width, c.height);
+            const w = (c.width / dataArray.length) * 2.5;
+            let x = 0;
+            for(let i = 0; i < dataArray.length; i++) {
+                const h = dataArray[i] / 2;
+                ctx.fillStyle = `hsl(${i*2}, 100%, 50%)`;
+                ctx.fillRect(x, c.height - h, w, h);
+                x += w + 1;
+            }
+        }
+
+        // --- CONCERT STAGE LOGIC ---
+        const stageCanvas = document.getElementById('stage-canvas');
+        const sCtx = stageCanvas.getContext('2d');
+        let stageObjects = [];
+        let activeChar = '🐱';
+        let currentWorld = 'space';
         
-        document.querySelectorAll('.voice-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.voice-btn').forEach(b => b.classList.remove('selected'));
-                btn.classList.add('selected');
-                selectedVoice = btn.dataset.voice;
-            });
+        function resizeStage() {
+            stageCanvas.width = stageCanvas.offsetWidth;
+            stageCanvas.height = stageCanvas.offsetHeight;
+        }
+        window.addEventListener('resize', resizeStage);
+        resizeStage();
+
+        document.querySelectorAll('.stage-ctrl').forEach(btn => {
+            btn.onclick = () => {
+                const action = btn.dataset.action;
+                const char = btn.dataset.char;
+                if(char) activeChar = (char === 'cat') ? '🐱' : (char === 'robot' ? '🤖' : '👽');
+                if(action) triggerStageEffect(action);
+            };
+        });
+        
+        document.querySelectorAll('.world-btn').forEach(btn => {
+            btn.onclick = () => currentWorld = btn.dataset.world;
         });
 
-        document.getElementById('magic-btn').onclick = () => {
-            const text = document.getElementById('story-input').value;
-            if(!text.trim()) return alert("Write a story first!");
-            
-            document.getElementById('view-story').querySelector('.glass-panel').classList.add('hidden');
-            document.getElementById('story-player').classList.remove('hidden');
-            
-            const display = document.getElementById('karaoke-display');
-            display.innerHTML = text.split(' ').map(w => `<span class="karaoke-word">${w}</span>`).join(' ');
-            
-            createProceduralBeat(text);
-            startStoryLoop();
-            startKaraoke(text);
-        };
-
-        function createProceduralBeat(text) {
-            const isHappy = text.includes('happy') || text.includes('fun') || text.includes('sun');
-            const isFast = text.includes('run') || text.includes('fast') || text.includes('race');
-            
-            storyTempo = isFast ? 300 : (isHappy ? 400 : 600);
-            
-            activeStoryBeat = [
-                [0, 2],         // Beat 1
-                [],             // Beat 2
-                [1, 2],         // Beat 3
-                [5]             // Beat 4
-            ];
-            
-            if(isHappy) activeStoryBeat[1].push(8); 
-            else activeStoryBeat[1].push(11); 
-        }
-
-        document.getElementById('remix-beat-btn').onclick = () => {
-            activeStoryBeat = [
-                Math.random() > 0.5 ? [0] : [0, 2],
-                Math.random() > 0.5 ? [2] : [8],
-                Math.random() > 0.5 ? [1] : [1, 2],
-                Math.random() > 0.5 ? [5] : [4]
-            ];
-        };
-
-        function startStoryLoop() {
-            if(storyInterval) clearInterval(storyInterval);
-            let beatIndex = 0;
-            storyInterval = setInterval(() => {
-                if(appActive) {
-                    const currentStep = activeStoryBeat[beatIndex % 4];
-                    currentStep.forEach(padId => playPad(pads[padId]));
-                    beatIndex++;
-                }
-            }, storyTempo);
-        }
-
-        function startKaraoke(text) {
-            const words = document.querySelectorAll('.karaoke-word');
-            let i = 0;
-            const interval = setInterval(() => {
-                if(!storyInterval || i >= words.length) {
-                    clearInterval(interval);
-                    return;
-                }
-                words.forEach(w => w.classList.remove('karaoke-active'));
-                words[i].classList.add('karaoke-active');
-                i++;
-            }, storyTempo); 
-        }
-
-        document.getElementById('ai-sing-btn').onclick = () => {
-            const text = document.getElementById('story-input').value;
-            if ('speechSynthesis' in window) {
-                const synth = window.speechSynthesis;
-                synth.cancel();
-
-                const voices = synth.getVoices();
-                let targetVoice = null;
-                const enVoices = voices.filter(v => v.lang.startsWith('en'));
-                
-                if (selectedVoice === 'star') {
-                    targetVoice = enVoices.find(v => v.name.includes('Google US English')) || enVoices.find(v => v.name.includes('Samantha')) || enVoices[0];
-                } else if (selectedVoice === 'buddy') {
-                    targetVoice = enVoices.find(v => v.name.includes('Google UK English Male')) || enVoices.find(v => v.name.includes('Daniel')) || enVoices[1] || enVoices[0];
-                } else { 
-                     targetVoice = enVoices.find(v => v.name.includes('Zira')) || enVoices.find(v => v.name.includes('Moira')) || enVoices[enVoices.length - 1] || enVoices[0];
-                }
-
-                const phrases = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
-
-                phrases.forEach((phrase, index) => {
-                    const utterance = new SpeechSynthesisUtterance(phrase.trim());
-                    if(targetVoice) utterance.voice = targetVoice;
-
-                    if (selectedVoice === 'star') {
-                        utterance.pitch = 1.4; utterance.rate = 1.2;
-                    } else if (selectedVoice === 'buddy') {
-                        utterance.pitch = 1.0; utterance.rate = 1.0;
-                    } else { 
-                        utterance.pitch = 0.8; utterance.rate = 0.9;
-                    }
-
-                    if (phrase.includes('?')) utterance.pitch += 0.2; 
-                    if (phrase.includes('!')) { utterance.rate += 0.1; utterance.volume = 1; } else { utterance.volume = 0.9; }
-
-                    synth.speak(utterance);
+        function triggerStageEffect(type) {
+            if(type === 'confetti' || type === 'beat') {
+                for(let i=0; i<8; i++) stageObjects.push({
+                    type: 'confetti', x: Math.random()*stageCanvas.width, y: 0, 
+                    vy: Math.random()*5+2, color: `hsl(${Math.random()*360}, 100%, 50%)`
                 });
-
-            } else {
-                alert("Smart Sing not supported on this browser.");
             }
-        };
+            if(type === 'bubbles') {
+                for(let i=0; i<5; i++) stageObjects.push({
+                    type: 'bubble', x: Math.random()*stageCanvas.width, y: stageCanvas.height, 
+                    vy: -(Math.random()*2+1), r: Math.random()*10+5
+                });
+            }
+            if(type === 'fireworks') {
+                stageObjects.push({
+                    type: 'firework', x: Math.random()*stageCanvas.width, y: stageCanvas.height,
+                    targetY: Math.random()*(stageCanvas.height/2), vy: -12, exploded: false, particles: []
+                });
+            }
+        }
 
-        document.getElementById('export-studio-btn').onclick = () => {
-            if(!activeStoryBeat) return;
+        function drawStage() {
+            if(appActive) {
+                requestAnimationFrame(drawStage);
+            } else {
+                setTimeout(drawStage, 500); 
+                return;
+            }
+
+            // Background
+            if(currentWorld === 'space') {
+                 sCtx.fillStyle = '#020617';
+                 sCtx.fillRect(0,0,stageCanvas.width, stageCanvas.height);
+                 if(Math.random() > 0.9) sCtx.fillStyle = '#fff'; else sCtx.fillStyle = 'transparent';
+                 sCtx.fillRect(Math.random()*stageCanvas.width, Math.random()*stageCanvas.height, 2, 2);
+            } else if (currentWorld === 'disco') {
+                 sCtx.fillStyle = `hsl(${Date.now()/50}, 50%, 10%)`;
+                 sCtx.fillRect(0,0,stageCanvas.width, stageCanvas.height);
+            } else { 
+                 sCtx.fillStyle = '#0c4a6e';
+                 sCtx.fillRect(0,0,stageCanvas.width, stageCanvas.height);
+            }
             
-            document.getElementById('stop-story-btn').click();
-            document.querySelector('[data-target="view-studio"]').click();
-            alert("Beat loaded into Studio! Playing now...");
-            
-            if(window.studioLoop) clearInterval(window.studioLoop);
-            
-            let beatIndex = 0;
-            window.studioLoop = setInterval(() => {
-                if(appActive) {
-                    const currentStep = activeStoryBeat[beatIndex % 4];
-                    currentStep.forEach(padId => {
-                        playPad(pads[padId]);
-                        const btn = document.getElementById(`pad-${padId}`);
-                        if(btn) {
-                            btn.style.borderColor = "white";
-                            setTimeout(() => btn.style.borderColor = "rgba(255,255,255,0.1)", 100);
-                        }
-                    });
-                    beatIndex++;
+            // Spotlights
+            sCtx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+            sCtx.beginPath();
+            sCtx.moveTo(0, 0); sCtx.lineTo(stageCanvas.width/3, stageCanvas.height); sCtx.lineTo(0, stageCanvas.height);
+            sCtx.fill();
+            sCtx.beginPath();
+            sCtx.moveTo(stageCanvas.width, 0); sCtx.lineTo(stageCanvas.width*0.66, stageCanvas.height); sCtx.lineTo(stageCanvas.width, stageCanvas.height);
+            sCtx.fill();
+
+            // Character
+            sCtx.font = "80px Arial";
+            sCtx.textAlign = "center";
+            let bounce = dataArray ? dataArray[5] / 8 : 0;
+            sCtx.fillText(activeChar, stageCanvas.width/2, stageCanvas.height - 50 - bounce);
+
+            // Objects
+            stageObjects.forEach((obj, idx) => {
+                if(obj.type === 'confetti') {
+                    sCtx.fillStyle = obj.color;
+                    sCtx.fillRect(obj.x, obj.y, 6, 6);
+                    obj.y += obj.vy;
+                    if(obj.y > stageCanvas.height) stageObjects.splice(idx, 1);
                 }
-            }, storyTempo);
-        };
-        
-        document.getElementById('clear-beats-btn').onclick = () => {
-            if(window.studioLoop) clearInterval(window.studioLoop);
-            window.studioLoop = null;
-        };
+                else if(obj.type === 'bubble') {
+                    sCtx.strokeStyle = 'rgba(255,255,255,0.5)';
+                    sCtx.beginPath(); sCtx.arc(obj.x, obj.y, obj.r, 0, Math.PI*2); sCtx.stroke();
+                    obj.y += obj.vy; obj.x += Math.sin(obj.y/20);
+                    if(obj.y < -50) stageObjects.splice(idx, 1);
+                }
+                else if(obj.type === 'firework') {
+                    if(!obj.exploded) {
+                        sCtx.fillStyle = '#fff';
+                        sCtx.fillRect(obj.x, obj.y, 4, 4);
+                        obj.y += obj.vy;
+                        if(obj.y <= obj.targetY) {
+                            obj.exploded = true;
+                            for(let j=0; j<20; j++) obj.particles.push({x: obj.x, y: obj.y, vx: Math.random()*4-2, vy: Math.random()*4-2, life: 1, color: `hsl(${Math.random()*360},100%,50%)`});
+                        }
+                    } else {
+                        obj.particles.forEach(p => {
+                            sCtx.fillStyle = p.color;
+                            sCtx.globalAlpha = p.life;
+                            sCtx.fillRect(p.x, p.y, 3, 3);
+                            sCtx.globalAlpha = 1;
+                            p.x += p.vx; p.y += p.vy; p.life -= 0.02;
+                        });
+                        if(obj.particles[0].life <= 0) stageObjects.splice(idx, 1);
+                    }
+                }
+            });
+        }
 
-        document.getElementById('stop-story-btn').onclick = () => {
-            if(storyInterval) clearInterval(storyInterval);
-            storyInterval = null;
-            window.speechSynthesis.cancel();
-            document.getElementById('story-player').classList.add('hidden');
-            document.getElementById('view-story').querySelector('.glass-panel').classList.remove('hidden');
-        };
-
-        document.getElementById('stop-all-btn').onclick = () => {
-            if(activeSourceNode) activeSourceNode.stop();
-            if(storyInterval) clearInterval(storyInterval);
-            if(window.studioLoop) clearInterval(window.studioLoop);
-            window.speechSynthesis.cancel();
-        };
-
-        // --- FIREBASE GALLERY LOGIC ---
+        // --- GALLERY LOGIC (Simplified for QA context) ---
         
         function saveToGallery(item) {
-            // Adds to Firestore instead of LocalStorage
             db.collection("sonic_gallery").add({
                 ...item,
-                timestamp: firebase.firestore.FieldValue.serverTimestamp() // For ordering
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
             })
             .then(() => {
                 console.log("Document successfully written!");
@@ -1257,7 +1361,6 @@
         function initGalleryListener() {
             const list = document.getElementById('gallery-list');
             
-            // Listen for updates in real-time
             db.collection("sonic_gallery")
                 .orderBy("timestamp", "desc")
                 .limit(20)
