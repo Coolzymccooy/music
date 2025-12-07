@@ -278,7 +278,7 @@
             
             <div id="user-profile" class="flex items-center gap-2 bg-slate-800/80 px-4 py-2 rounded-full text-xs font-semibold border border-slate-700 shadow-md">
                 <span>👤 Creator</span>
-                <span class="text-green-400 animate-pulse">●</span>
+                <span id="loop-status-text" class="text-green-400 animate-pulse">● Ready</span>
             </div>
         </div>
 
@@ -314,7 +314,7 @@
                         </button>
                         <div class="flex gap-2 w-full justify-center">
                             <button id="play-recording-btn" disabled class="btn-modern px-4 py-2 bg-green-600/80 hover:bg-green-500 text-white text-xs md:text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed w-full">▶ Play</button>
-                            <button id="loop-btn" disabled class="btn-modern px-4 py-2 bg-indigo-600/80 hover:bg-indigo-500 text-white text-xs md:text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed w-full transition-colors">🔁 Loop</button>
+                            <button id="loop-btn" class="btn-modern px-4 py-2 bg-indigo-600/80 hover:bg-indigo-500 text-white text-xs md:text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed w-full transition-colors">🔁 Loop</button>
                         </div>
                          <button id="save-track-btn" class="btn-modern w-full py-2 bg-blue-600/80 hover:bg-blue-500 text-white text-xs md:text-sm shadow-lg">💾 Save Track</button>
                     </div>
@@ -533,21 +533,35 @@
         let audioCtx, analyser, dataArray;
         let compressorNode, voiceGainNode;
         let impulseBuffer;
-        let activeSourceNode = null;
+        let activeSourceNode = null; // Used for VOICED playback source
         let isRecording = false, mediaRecorder, chunks = [], recordedAudioBuffer = null;
         let recordedBlob = null;
         let animationFrameIds = {}; 
         let isLooping = false;
         
+        // --- MASTER LOOPING/BEAT STATE ---
+        let masterBeatInterval = null; // Internal beat loop timer
+        let isMasterBeatRecording = false; // TRUE if master loop is capturing new pad hits
+        let masterBeatBuffer = null; // Combined audio buffer for beats/synths
+        let masterBeatSource = null; // Source node for playing back masterBeatBuffer
+        let audioDestinationNode; // The node where all audio is mixed before speakers
+
         // --- UI State ---
         let currentEffect = 'normal';
         let isMuted = false;
-        let activeStoryBeat = null;
+        let activeStoryBeat = null; // This array stores the recorded beat sequence (array of pad IDs per step)
         let isStoryModeAIActive = false;
         let appActive = false;
         let selectedVoice = 'star'; 
         let storyInterval = null; // Defined here to be global
         let storyTempo = 500;
+        
+        // --- GAME STATE VARIABLES (Declared with var for resilience) ---
+        var gameLevel = 1; 
+        var gameSequence = [];
+        var playerSequence = [];
+        var isGameActive = false;
+        // ---------------------------------------------------------------
         
         // --- Particle System ---
         function createParticles() {
@@ -586,12 +600,17 @@
                 analyser = audioCtx.createAnalyser();
                 analyser.fftSize = 256;
                 dataArray = new Uint8Array(analyser.frequencyBinCount);
+                
+                // Create a dedicated master output gain node (or just use analyser before speakers)
+                audioDestinationNode = audioCtx.createGain();
+                audioDestinationNode.connect(analyser);
                 analyser.connect(audioCtx.destination); 
 
                 compressorNode = audioCtx.createDynamicsCompressor();
                 voiceGainNode = audioCtx.createGain();
+                // Voice Chain: compressor -> voiceGain -> Master Mix Bus (analyser)
                 compressorNode.connect(voiceGainNode);
-                voiceGainNode.connect(analyser);
+                voiceGainNode.connect(analyser); 
             }
 
             if (!mediaRecorder) {
@@ -634,11 +653,10 @@
             document.getElementById('app-container').classList.add('hidden');
             document.getElementById('nav-dock').classList.add('hidden');
             document.getElementById('landing-page').classList.remove('hidden-visually');
-            if(activeSourceNode) activeSourceNode.stop();
-            if(storyInterval) clearInterval(storyInterval);
-            if(window.studioLoop) clearInterval(window.studioLoop);
+            
+            stopAll(); // Use the consolidated stop function
+            
             if(audioCtx) audioCtx.suspend();
-            window.speechSynthesis.cancel();
             createParticles();
             notifyHost('CLOSED', {});
         }
@@ -693,6 +711,15 @@
                 const trigger = (e) => {
                     // Prevent both mousedown and touchstart from firing
                     if (e.cancelable) e.preventDefault();
+                    
+                    // --- BEAT RECORDING / OVERDUB LOGIC ---
+                    if (isMasterBeatRecording) {
+                        // Capture only the PAD ID (0-19) for later playback
+                        if (!activeStoryBeat) activeStoryBeat = [];
+                        activeStoryBeat.push(pad.id); 
+                    }
+                    // --- END BEAT RECORDING LOGIC ---
+
                     playPad(pad);
                     btn.classList.add('active');
                     setTimeout(() => btn.classList.remove('active'), 150);
@@ -703,9 +730,7 @@
                     btn.onpointerdown = (e) => {
                         e.preventDefault();
                         btn.setPointerCapture(e.pointerId);
-                        playPad(pad);
-                        btn.classList.add('active');
-                        setTimeout(() => btn.classList.remove('active'), 150);
+                        trigger(e); // Use the unified trigger function
                     };
                 } else {
                     // Fallback for older browsers
@@ -835,10 +860,10 @@
         }
 
         // --- GAMES LOGIC (Rhythm Mimic) ---
-        let gameLevel = 1;
-        let gameSequence = [];
-        let playerSequence = [];
-        let isGameActive = false;
+        var gameLevel = 1;
+        var gameSequence = [];
+        var playerSequence = [];
+        var isGameActive = false;
         
         document.getElementById('start-game-btn').onclick = startGame;
         
@@ -987,16 +1012,49 @@
             });
         });
 
-        // 3. Loop Toggle
+        // 3. Loop Toggle - Now handles beat recording state
         const loopBtn = document.getElementById('loop-btn');
         loopBtn.addEventListener('click', () => {
-            isLooping = !isLooping;
-            if(isLooping) {
-                loopBtn.classList.add('loop-active');
+            // Ensure audio context is ready
+            if (!audioCtx) { initAudio(); }
+            
+            if (isMasterBeatRecording) {
+                // Stop Looping / Finish Recording
+                stopAll();
             } else {
-                loopBtn.classList.remove('loop-active');
+                // Stop existing loops/playback first
+                stopAll();
+                
+                // Start Looping / Recording
+                isLooping = true;
+                loopBtn.classList.add('loop-active');
+                
+                // CRITICAL FIX: Start capturing beat hits
+                isMasterBeatRecording = true;
+                activeStoryBeat = []; // Clear old recorded beats
+                
+                document.querySelector('#loop-status-text').innerText = "● BEAT RECORDING";
+                document.getElementById('status-indicator').innerText = "REC: TAPPING BEATS";
+                document.getElementById('status-indicator').classList.remove('bg-slate-700/50');
+                document.getElementById('status-indicator').classList.add('bg-indigo-500/80', 'text-white');
+                
+                // Start a silent timer loop to define the beat intervals while recording
+                if (window.studioLoop) clearInterval(window.studioLoop);
+                
+                // Use a counter to track the recording steps for quantization (though we capture free rhythm now)
+                let beatIndex = 0;
+                const tempo = 500; 
+
+                window.studioLoop = setInterval(() => {
+                    // This interval simply dictates the *length* of the loop if pads aren't hit.
+                    beatIndex++;
+                }, tempo);
+                
+                // If a voice buffer exists, start it playing immediately so user can sync beats
+                if (recordedAudioBuffer) {
+                    startPlayback(false);
+                }
             }
-            if(activeSourceNode) activeSourceNode.loop = isLooping;
         });
 
         // 4. Volume Control
@@ -1012,7 +1070,6 @@
             isMastered = !isMastered;
             masterMixBtn.classList.toggle('mastered', isMastered);
             
-            // If master is toggled, ensure playback restarts to route through the new chain
             if (activeSourceNode) {
                 startPlayback(true);
             }
@@ -1020,12 +1077,11 @@
         
         // Plays both the Beat Loop and Voice Loop together
         playMasterBtn.addEventListener('click', () => {
-             // Stop previous loops first (voice, story, beat)
+             // Stop everything first
             stopAll(); 
 
-            // 1. Start Voice Loop/Playback (This is handled by startPlayback)
+            // 1. Start Voice Loop/Playback 
             if (recordedAudioBuffer) {
-                // Force looping on for Master Playback demonstration
                 isLooping = true;
                 loopBtn.classList.add('loop-active');
                 startPlayback(false); 
@@ -1033,24 +1089,50 @@
 
             // 2. Start Beat Loop
             if (window.studioLoop) clearInterval(window.studioLoop);
-            let beatIndex = 0;
-            const tempo = storyTempo; // Defaulting to story tempo for synchronization
             
-            window.studioLoop = setInterval(() => {
-                if(activeStoryBeat) { // If there's an active pattern from Story mode
-                    const currentStep = activeStoryBeat[beatIndex % 4];
-                    currentStep.forEach(padId => playPad(pads[padId]));
-                    beatIndex++;
-                } else {
-                    // Fallback: If no story beat, just play the kick
-                     playPad(pads[0]);
-                }
-            }, tempo);
+            // Play the recorded beat sequence if one exists
+            if (activeStoryBeat && activeStoryBeat.length > 0) { 
+                let beatIndex = 0;
+                const startTime = audioCtx.currentTime;
+                
+                // Revert to simple fixed-interval loop for beat playback consistency
+                let currentStep = 0;
+                const tempo = 300; // Fast tempo for simple playback rhythm
+                 
+                window.studioLoop = setInterval(() => {
+                    // Check if the current step has a pad recorded (using the simple ID storage)
+                    if (currentStep < activeStoryBeat.length) {
+                       const padId = activeStoryBeat[currentStep];
+                       playPad(pads.find(p => p.id === padId)); 
+                    } else if (currentStep >= activeStoryBeat.length) {
+                        // Restart sequence
+                        currentStep = 0;
+                        const padId = activeStoryBeat[currentStep];
+                        playPad(pads.find(p => p.id === padId)); 
+                    }
+                    currentStep++;
+                }, tempo);
+                
+            } else {
+                // Fallback: Default kick/snare pattern loop if no beat was recorded
+                 if (window.studioLoop) clearInterval(window.studioLoop);
+                 let beatIndex = 0;
+                 const tempo = 500; 
+                 
+                 window.studioLoop = setInterval(() => {
+                     if (beatIndex % 4 === 0) playPad(pads[0]); 
+                     if (beatIndex % 4 === 2) playPad(pads[1]); 
+                     playPad(pads[2]); 
+                     beatIndex++;
+                 }, tempo);
+            }
+
             
              // 3. Update Status
             document.getElementById('status-indicator').innerText = "MASTER OUTPUT";
-            document.getElementById('status-indicator').classList.remove('bg-slate-700/50');
+            document.getElementById('status-indicator').classList.remove('bg-slate-700/50', 'bg-indigo-500/80');
             document.getElementById('status-indicator').classList.add('bg-yellow-500/80', 'text-black');
+            document.querySelector('#loop-status-text').innerText = "● MASTER PLAYING";
         });
         
         function applyMasteringChain(sourceNode) {
@@ -1188,12 +1270,20 @@
              if(storyInterval) clearInterval(storyInterval);
              if(window.studioLoop) clearInterval(window.studioLoop);
              window.studioLoop = null;
+             
              window.speechSynthesis.cancel();
              
              // Reset UI Status
              document.getElementById('status-indicator').innerText = "Ready";
-             document.getElementById('status-indicator').classList.remove('bg-yellow-500/80', 'text-black');
+             document.getElementById('status-indicator').classList.remove('bg-yellow-500/80', 'text-black', 'bg-indigo-500/80');
              document.getElementById('status-indicator').classList.add('bg-slate-700/50');
+             
+             document.querySelector('#loop-status-text').innerText = "● Ready"; // Reset loop text
+             
+             // Ensure loop button is reset if audio stopped
+             isLooping = false;
+             isMasterBeatRecording = false; // Ensure beat recording flag is off
+             document.getElementById('loop-btn').classList.remove('loop-active');
         }
 
         // --- VISUALIZERS ---
