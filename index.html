@@ -133,6 +133,7 @@
             align-items: center;
             justify-content: center;
             gap: 4px;
+            touch-action: none; /* Prevents scroll while drumming */
         }
 
         .pad-btn:active, .pad-btn.active {
@@ -166,6 +167,12 @@
             color: white;
             border: 1px solid white;
             box-shadow: 0 0 15px rgba(236, 72, 153, 0.6);
+        }
+
+        .loop-active {
+            background-color: #4f46e5;
+            border-color: #818cf8;
+            box-shadow: 0 0 15px rgba(79, 70, 229, 0.5);
         }
 
         canvas {
@@ -285,7 +292,6 @@
                     <h2 class="text-xl font-bold text-cyan-400">🎹 Beat Maker</h2>
                     <button id="clear-beats-btn" class="btn-modern text-xs bg-slate-700/50 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/50 px-3 py-1.5 transition-colors">Clear Pattern</button>
                 </div>
-                <!-- Updated grid to 5 columns for smaller buttons and more width -->
                 <div class="grid grid-cols-5 gap-2" id="pad-container">
                     <!-- Pads injected by JS -->
                 </div>
@@ -301,7 +307,7 @@
                         </button>
                         <div class="flex gap-2 w-full justify-center">
                             <button id="play-recording-btn" disabled class="btn-modern px-4 py-2 bg-green-600/80 hover:bg-green-500 text-white text-xs md:text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed w-full">▶ Play</button>
-                            <button id="loop-btn" disabled class="btn-modern px-4 py-2 bg-indigo-600/80 hover:bg-indigo-500 text-white text-xs md:text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed w-full">🔁 Loop</button>
+                            <button id="loop-btn" disabled class="btn-modern px-4 py-2 bg-indigo-600/80 hover:bg-indigo-500 text-white text-xs md:text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed w-full transition-colors">🔁 Loop</button>
                         </div>
                          <button id="save-track-btn" class="btn-modern w-full py-2 bg-blue-600/80 hover:bg-blue-500 text-white text-xs md:text-sm shadow-lg">💾 Save Track</button>
                     </div>
@@ -478,7 +484,7 @@
         };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
-        // Anonymous Auth (Best Practice for R/W access to Firestore)
+        // Anonymous Auth
         firebase.auth().signInAnonymously().catch(err => console.log("Auth Error (Check Rules):", err));
 
         // --- MOTHER APP INTEGRATION BRIDGE ---
@@ -490,9 +496,7 @@
             document.querySelector('#user-profile span:first-child').innerText = '👤 ' + embeddedChildName;
         }
 
-        // Listen for commands from the Host App
         window.addEventListener('message', (event) => {
-            // Handle messages like { type: 'SET_USER', name: 'Alice' }
             if (event.data?.type === 'SET_USER') {
                  document.querySelector('#user-profile span:first-child').innerText = '👤 ' + event.data.name;
             }
@@ -512,6 +516,7 @@
         let isRecording = false, mediaRecorder, chunks = [], recordedAudioBuffer = null;
         let recordedBlob = null;
         let animationFrameIds = {}; 
+        let isLooping = false;
         
         // --- UI State ---
         let currentEffect = 'normal';
@@ -520,6 +525,8 @@
         let isStoryModeAIActive = false;
         let appActive = false;
         let selectedVoice = 'star'; 
+        let storyInterval = null; // Defined here to be global
+        let storyTempo = 500;
         
         // --- Particle System ---
         function createParticles() {
@@ -542,46 +549,47 @@
         async function initAudio() {
             if(audioCtx) {
                 if(audioCtx.state === 'suspended') await audioCtx.resume();
-                return;
+            } else {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+                
+                const length = audioCtx.sampleRate * 2.0;
+                impulseBuffer = audioCtx.createBuffer(2, length, audioCtx.sampleRate);
+                for (let i=0; i<length; i++) {
+                    const n = i/length;
+                    const noise = (Math.random()*2-1)*Math.pow(1-n, 3);
+                    impulseBuffer.getChannelData(0)[i] = noise;
+                    impulseBuffer.getChannelData(1)[i] = noise;
+                }
+
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 256;
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                analyser.connect(audioCtx.destination); 
+
+                compressorNode = audioCtx.createDynamicsCompressor();
+                voiceGainNode = audioCtx.createGain();
+                compressorNode.connect(voiceGainNode);
+                voiceGainNode.connect(analyser);
             }
 
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
-            audioCtx = new AudioContext();
-            
-            const length = audioCtx.sampleRate * 2.0;
-            impulseBuffer = audioCtx.createBuffer(2, length, audioCtx.sampleRate);
-            for (let i=0; i<length; i++) {
-                const n = i/length;
-                const noise = (Math.random()*2-1)*Math.pow(1-n, 3);
-                impulseBuffer.getChannelData(0)[i] = noise;
-                impulseBuffer.getChannelData(1)[i] = noise;
+            if (!mediaRecorder) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    mediaRecorder.ondataavailable = e => chunks.push(e.data);
+                    mediaRecorder.onstop = async () => {
+                        recordedBlob = new Blob(chunks, { 'type' : 'audio/ogg; codecs=opus' });
+                        chunks = [];
+                        const ab = await recordedBlob.arrayBuffer();
+                        recordedAudioBuffer = await audioCtx.decodeAudioData(ab);
+                        document.getElementById('play-recording-btn').disabled = false;
+                        document.getElementById('play-recording-btn').classList.remove('opacity-50');
+                        document.getElementById('loop-btn').disabled = false;
+                        document.getElementById('loop-btn').classList.remove('opacity-50');
+                    };
+                } catch(e) { console.log("Mic access denied or error", e); }
             }
-
-            analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 256;
-            dataArray = new Uint8Array(analyser.frequencyBinCount);
-            analyser.connect(audioCtx.destination); 
-
-            compressorNode = audioCtx.createDynamicsCompressor();
-            voiceGainNode = audioCtx.createGain();
-            compressorNode.connect(voiceGainNode);
-            voiceGainNode.connect(analyser);
-
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream);
-                mediaRecorder.ondataavailable = e => chunks.push(e.data);
-                mediaRecorder.onstop = async () => {
-                    recordedBlob = new Blob(chunks, { 'type' : 'audio/ogg; codecs=opus' });
-                    chunks = [];
-                    const ab = await recordedBlob.arrayBuffer();
-                    recordedAudioBuffer = await audioCtx.decodeAudioData(ab);
-                    document.getElementById('play-recording-btn').disabled = false;
-                    document.getElementById('play-recording-btn').classList.remove('opacity-50');
-                    document.getElementById('loop-btn').disabled = false;
-                    document.getElementById('loop-btn').classList.remove('opacity-50');
-                };
-            } catch(e) { console.log("Mic access denied or error"); }
         }
 
         // --- View Transitions ---
@@ -592,9 +600,11 @@
             document.getElementById('app-container').classList.remove('hidden');
             document.getElementById('nav-dock').classList.remove('hidden');
             document.getElementById('nav-dock').style.display = 'flex';
+            
+            // Resume/Start Loops
             drawVisualizer();
             drawStage();
-            initGalleryListener(); // Start listening to Firebase
+            initGalleryListener();
             notifyHost('OPENED', {});
         }
 
@@ -628,30 +638,22 @@
         });
 
         // --- STUDIO LOGIC ---
-        // Enhanced Drums & Expanded Grid (5x4 = 20 Pads)
         const pads = [
-            // Row 1: Power Drums (Kicks & Toms)
             { id: 0, name: 'Kick', icon: '🥁', color: 'bg-red-600', type: 'drum', freq: 150 },
-            { id: 16, name: 'Deep Kick', icon: '💣', color: 'bg-red-800', type: 'deepkick' }, // NEW
+            { id: 16, name: 'Deep Kick', icon: '💣', color: 'bg-red-800', type: 'deepkick' },
             { id: 12, name: 'Tom', icon: '🪘', color: 'bg-red-500', type: 'tom' },
-            { id: 17, name: 'Floor Tom', icon: '📉', color: 'bg-red-700', type: 'floortom' }, // NEW
-            { id: 18, name: 'Elec Tom', icon: '👾', color: 'bg-pink-600', type: 'electom' }, // NEW
-
-            // Row 2: Snare & Metals
+            { id: 17, name: 'Floor Tom', icon: '📉', color: 'bg-red-700', type: 'floortom' },
+            { id: 18, name: 'Elec Tom', icon: '👾', color: 'bg-pink-600', type: 'electom' },
             { id: 1, name: 'Snare', icon: '🥢', color: 'bg-orange-500', type: 'snare' },
-            { id: 19, name: 'Rimshot', icon: '📍', color: 'bg-orange-400', type: 'rimshot' }, // NEW
+            { id: 19, name: 'Rimshot', icon: '📍', color: 'bg-orange-400', type: 'rimshot' },
             { id: 3, name: 'Clap', icon: '👏', color: 'bg-amber-500', type: 'clap' },
             { id: 2, name: 'Hi-Hat', icon: '📀', color: 'bg-yellow-500', type: 'hat' },
             { id: 14, name: 'Open Hat', icon: '💿', color: 'bg-yellow-400', type: 'openhat' },
-
-            // Row 3: Percussion & FX
             { id: 13, name: 'Shaker', icon: '🧂', color: 'bg-orange-300', type: 'shaker' },
             { id: 15, name: 'Cowbell', icon: '🔔', color: 'bg-amber-400', type: 'cowbell' },
             { id: 4, name: 'Laser', icon: '🔫', color: 'bg-green-600', type: 'synth', freq: 800, slide: true },
             { id: 7, name: 'Zap', icon: '⚡', color: 'bg-cyan-600', type: 'synth', freq: 1200, slide: true },
             { id: 6, name: 'Magic', icon: '✨', color: 'bg-teal-500', type: 'synth', freq: 600, magic: true },
-
-            // Row 4: Melodic
             { id: 5, name: 'Bass', icon: '🎸', color: 'bg-emerald-600', type: 'synth', freq: 65, typeW: 'square' },
             { id: 8, name: 'C Maj', icon: '🎹', color: 'bg-blue-600', type: 'chord', notes: [261, 329, 392] },
             { id: 9, name: 'F Maj', icon: '🎹', color: 'bg-indigo-600', type: 'chord', notes: [349, 440, 523] },
@@ -665,17 +667,31 @@
             pads.forEach(pad => {
                 const btn = document.createElement('button');
                 btn.id = `pad-${pad.id}`;
-                // Reduced text size slightly for 5-column layout
                 btn.className = `pad-btn w-full aspect-square rounded-xl ${pad.color} text-white font-bold text-[10px] md:text-sm shadow-lg border border-white/10`;
                 btn.innerHTML = `<span class="text-lg md:text-2xl filter drop-shadow-md">${pad.icon}</span><span class="text-[8px] md:text-[10px] uppercase tracking-wide opacity-90 leading-none">${pad.name}</span>`;
                 const trigger = (e) => {
-                    if(e.cancelable) e.preventDefault(); 
+                    // Prevent both mousedown and touchstart from firing
+                    if (e.type === 'touchstart') {
+                        e.preventDefault();
+                    }
                     playPad(pad);
                     btn.classList.add('active');
                     setTimeout(() => btn.classList.remove('active'), 150);
                 };
-                btn.addEventListener('mousedown', trigger);
-                btn.addEventListener('touchstart', trigger);
+                
+                // Use pointerdown for a unified event, but if not available, careful fallback
+                if (window.PointerEvent) {
+                    btn.onpointerdown = (e) => {
+                        e.preventDefault();
+                        btn.setPointerCapture(e.pointerId);
+                        playPad(pad);
+                        btn.classList.add('active');
+                        setTimeout(() => btn.classList.remove('active'), 150);
+                    };
+                } else {
+                    btn.addEventListener('mousedown', trigger);
+                    btn.addEventListener('touchstart', trigger);
+                }
                 container.appendChild(btn);
             });
         }
@@ -687,8 +703,7 @@
             const gain = audioCtx.createGain();
             gain.connect(analyser);
 
-            // --- KICKS ---
-            if (pad.type === 'drum') { // Standard Kick
+            if (pad.type === 'drum') {
                 const osc = audioCtx.createOscillator();
                 osc.frequency.setValueAtTime(pad.freq, now);
                 osc.frequency.exponentialRampToValueAtTime(0.01, now + 0.5);
@@ -696,7 +711,7 @@
                 gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
                 osc.connect(gain); osc.start(now); osc.stop(now + 0.5);
             }
-            else if (pad.type === 'deepkick') { // Sub Bass Kick
+            else if (pad.type === 'deepkick') {
                 const osc = audioCtx.createOscillator();
                 osc.frequency.setValueAtTime(60, now);
                 osc.frequency.exponentialRampToValueAtTime(30, now + 0.8);
@@ -704,46 +719,31 @@
                 gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
                 osc.connect(gain); osc.start(now); osc.stop(now + 0.8);
             }
-
-            // --- TOMS ---
-            else if (pad.type === 'tom') {
+            else if (pad.type === 'tom' || pad.type === 'floortom' || pad.type === 'electom') {
                 const osc = audioCtx.createOscillator();
-                osc.frequency.setValueAtTime(200, now);
-                osc.frequency.exponentialRampToValueAtTime(80, now + 0.3);
+                osc.type = pad.type === 'electom' ? 'square' : (pad.type === 'floortom' ? 'triangle' : 'sine');
+                const startFreq = pad.type === 'floortom' ? 120 : (pad.type === 'electom' ? 300 : 200);
+                const endFreq = pad.type === 'electom' ? 50 : (pad.type === 'floortom' ? 40 : 80);
+                osc.frequency.setValueAtTime(startFreq, now);
+                osc.frequency.exponentialRampToValueAtTime(endFreq, now + 0.3);
                 gain.gain.setValueAtTime(0.8, now);
                 gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-                osc.connect(gain); osc.start(now); osc.stop(now + 0.3);
+                
+                if(pad.type === 'electom') {
+                    const filt = audioCtx.createBiquadFilter();
+                    filt.type = 'lowpass'; filt.frequency.value = 600;
+                    osc.connect(filt).connect(gain);
+                } else {
+                    osc.connect(gain);
+                }
+                osc.start(now); osc.stop(now + 0.3);
             }
-            else if (pad.type === 'floortom') {
-                const osc = audioCtx.createOscillator();
-                osc.type = 'triangle'; // Thicker sound
-                osc.frequency.setValueAtTime(120, now);
-                osc.frequency.exponentialRampToValueAtTime(40, now + 0.5);
-                gain.gain.setValueAtTime(0.9, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
-                osc.connect(gain); osc.start(now); osc.stop(now + 0.5);
-            }
-            else if (pad.type === 'electom') { // Simmons style
-                const osc = audioCtx.createOscillator();
-                osc.type = 'square'; // Digital sound
-                osc.frequency.setValueAtTime(300, now);
-                osc.frequency.linearRampToValueAtTime(50, now + 0.2);
-                // Filter to smooth the square wave
-                const filt = audioCtx.createBiquadFilter();
-                filt.type = 'lowpass'; filt.frequency.value = 600;
-                gain.gain.setValueAtTime(0.5, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
-                osc.connect(filt).connect(gain); osc.start(now); osc.stop(now + 0.2);
-            }
-
-            // --- SNARES & METALS ---
             else if (pad.type === 'snare') {
                 const osc = audioCtx.createOscillator();
                 osc.type = 'triangle'; osc.frequency.setValueAtTime(180, now);
                 const oscGain = audioCtx.createGain();
                 oscGain.gain.setValueAtTime(0.5, now); oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
                 osc.connect(oscGain); oscGain.connect(gain); osc.start(now); osc.stop(now+0.2);
-                
                 const buf = audioCtx.createBuffer(1, audioCtx.sampleRate*0.4, audioCtx.sampleRate);
                 const d = buf.getChannelData(0); for(let i=0; i<d.length; i++) d[i] = Math.random()*2-1;
                 const src = audioCtx.createBufferSource(); src.buffer = buf;
@@ -755,42 +755,25 @@
                 const osc = audioCtx.createOscillator();
                 osc.frequency.setValueAtTime(800, now);
                 osc.frequency.exponentialRampToValueAtTime(100, now + 0.05);
-                gain.gain.setValueAtTime(0.6, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                gain.gain.setValueAtTime(0.6, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
                 osc.connect(gain); osc.start(now); osc.stop(now + 0.05);
             }
-            else if (pad.type === 'hat') {
-                const buf = audioCtx.createBuffer(1, audioCtx.sampleRate*0.1, audioCtx.sampleRate);
+            else if (pad.type === 'hat' || pad.type === 'openhat' || pad.type === 'shaker') {
+                const len = pad.type === 'openhat' ? 0.5 : 0.1;
+                const freq = pad.type === 'shaker' ? 3000 : (pad.type === 'openhat' ? 4000 : 6000);
+                const buf = audioCtx.createBuffer(1, audioCtx.sampleRate*len, audioCtx.sampleRate);
                 const d = buf.getChannelData(0); for(let i=0; i<d.length; i++) d[i] = Math.random()*2-1;
                 const src = audioCtx.createBufferSource(); src.buffer = buf;
-                const filt = audioCtx.createBiquadFilter(); filt.type = 'highpass'; filt.frequency.value = 6000;
-                gain.gain.setValueAtTime(0.4, now); gain.gain.exponentialRampToValueAtTime(0.01, now+0.08);
+                const filt = audioCtx.createBiquadFilter(); filt.type = 'highpass'; filt.frequency.value = freq;
+                gain.gain.setValueAtTime(0.4, now); gain.gain.exponentialRampToValueAtTime(0.01, now+len);
                 src.connect(filt).connect(gain); src.start(now);
             }
-            else if (pad.type === 'openhat') {
-                const buf = audioCtx.createBuffer(1, audioCtx.sampleRate*0.5, audioCtx.sampleRate);
-                const d = buf.getChannelData(0); for(let i=0; i<d.length; i++) d[i] = Math.random()*2-1;
-                const src = audioCtx.createBufferSource(); src.buffer = buf;
-                const filt = audioCtx.createBiquadFilter(); filt.type = 'highpass'; filt.frequency.value = 4000;
-                gain.gain.setValueAtTime(0.4, now); gain.gain.exponentialRampToValueAtTime(0.01, now+0.4);
-                src.connect(filt).connect(gain); src.start(now);
-            }
-            // CLAP
             else if (pad.type === 'clap') {
                 const buf = audioCtx.createBuffer(1, audioCtx.sampleRate*0.4, audioCtx.sampleRate);
                 const d = buf.getChannelData(0); for(let i=0; i<d.length; i++) d[i] = Math.random()*2-1;
                 const src = audioCtx.createBufferSource(); src.buffer = buf;
                 const filt = audioCtx.createBiquadFilter(); filt.type = 'bandpass'; filt.frequency.value = 1500;
                 gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.8, now + 0.01); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
-                src.connect(filt).connect(gain); src.start(now);
-            }
-            // PERCUSSION
-            else if (pad.type === 'shaker') {
-                const buf = audioCtx.createBuffer(1, audioCtx.sampleRate*0.1, audioCtx.sampleRate);
-                const d = buf.getChannelData(0); for(let i=0; i<d.length; i++) d[i] = Math.random()*2-1;
-                const src = audioCtx.createBufferSource(); src.buffer = buf;
-                const filt = audioCtx.createBiquadFilter(); filt.type = 'highpass'; filt.frequency.value = 3000;
-                gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now+0.05);
                 src.connect(filt).connect(gain); src.start(now);
             }
             else if (pad.type === 'cowbell') {
@@ -803,7 +786,6 @@
                 gain.gain.setValueAtTime(0.6, now); gain.gain.exponentialRampToValueAtTime(0.01, now+0.2);
                 osc1.start(now); osc2.start(now); osc1.stop(now+0.2); osc2.stop(now+0.2);
             }
-            // SYNTHS
             else if (pad.type === 'synth' || pad.type === 'chord') {
                 const oscs = pad.notes || [pad.freq];
                 oscs.forEach(f => {
@@ -911,9 +893,184 @@
             startBtn.classList.remove('hidden');
         }
 
+        document.getElementById('record-btn').onclick = function() {
+            if (!mediaRecorder) {
+                alert("Microphone not ready or permission denied.");
+                return;
+            }
+            
+            if(!isRecording) {
+                if (mediaRecorder.state === 'inactive') {
+                    try {
+                        mediaRecorder.start();
+                        isRecording = true;
+                        this.classList.add('recording-pulse', 'bg-red-600');
+                    } catch (e) {
+                        console.error("Error starting recorder:", e);
+                        alert("Could not start recording. Please check microphone permissions.");
+                    }
+                }
+            } else {
+                if (mediaRecorder.state === 'recording') {
+                    mediaRecorder.stop();
+                    isRecording = false;
+                    this.classList.remove('recording-pulse', 'bg-red-600');
+                }
+            }
+        };
+
+        // --- FIXED BUTTON LOGIC ---
+        
+        // 1. Effects Selection - RESTART PLAYBACK ON CHANGE
+        const effectBtns = document.querySelectorAll('.effect-btn');
+        effectBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                effectBtns.forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                currentEffect = btn.dataset.effect;
+                
+                // Smart Restart: If currently playing/looping, restart immediately to apply effect
+                if (activeSourceNode) {
+                    startPlayback(true);
+                }
+            });
+        });
+
+        // 2. Pro-Tuner Toggle
+        const proTunerBtn = document.getElementById('pro-tuner-toggle');
+        const tunerConsole = document.getElementById('tuner-console');
+        proTunerBtn.addEventListener('click', () => {
+            tunerConsole.classList.toggle('hidden');
+            proTunerBtn.classList.toggle('selected');
+        });
+        
+        // Real-time tuner updates
+        ['tune-pitch', 'tune-robot', 'tune-reverb'].forEach(id => {
+            document.getElementById(id).addEventListener('input', () => {
+                if(activeSourceNode) {
+                    // For simple pitch, we can update live without full restart if in simple mode
+                    // But for complex chain (Robot LFO), restart is safer or we need active node refs
+                    // Given the request for "smart/intelligent", let's update live if possible, else restart
+                    startPlayback(true); // Restart is the cleanest way to guarantee new chain structure
+                }
+            });
+        });
+
+        // 3. Loop Toggle
+        const loopBtn = document.getElementById('loop-btn');
+        loopBtn.addEventListener('click', () => {
+            isLooping = !isLooping;
+            if(isLooping) {
+                loopBtn.classList.add('loop-active');
+            } else {
+                loopBtn.classList.remove('loop-active');
+            }
+            if(activeSourceNode) activeSourceNode.loop = isLooping;
+        });
+
+        // 4. Volume Control
+        const volSlider = document.getElementById('voice-vol');
+        volSlider.addEventListener('input', (e) => {
+            if(voiceGainNode) voiceGainNode.gain.value = e.target.value;
+        });
+
+        // 5. Updated Playback Logic - Extracted to function
+        function startPlayback(isRestart = false) {
+             if(!recordedAudioBuffer) return;
+             
+             // If this is a restart (e.g. effect change), stop current sound
+             if(activeSourceNode) {
+                 try { activeSourceNode.stop(); } catch(e){}
+             }
+
+             const source = audioCtx.createBufferSource();
+             source.buffer = recordedAudioBuffer;
+             source.loop = isLooping;
+             
+             let lastNode = source;
+
+             // --- EFFECT PROCESSING ---
+             // We construct the graph fresh every time based on current settings
+             
+             let pitch = 1.0;
+             let wobble = 0;
+             let reverbAmt = 0;
+
+             // Standard Presets
+             if (currentEffect === 'chipmunk') {
+                 pitch = 1.5;
+             } else if (currentEffect === 'monster') {
+                 pitch = 0.7;
+             } else if (currentEffect === 'robot') {
+                 wobble = 50; // Strong wobble
+             }
+
+             // Pro-Tuner Overrides (if visible)
+             if (!tunerConsole.classList.contains('hidden')) {
+                 pitch = parseFloat(document.getElementById('tune-pitch').value);
+                 const tunerWobble = parseFloat(document.getElementById('tune-robot').value);
+                 reverbAmt = parseFloat(document.getElementById('tune-reverb').value);
+                 if(tunerWobble > 0) wobble = tunerWobble;
+             }
+
+             source.playbackRate.value = pitch;
+
+             if (wobble > 0) {
+                 const lfo = audioCtx.createOscillator();
+                 lfo.frequency.value = wobble / 2; // LFO speed
+                 const lfoGain = audioCtx.createGain();
+                 lfoGain.gain.value = 500; // Depth
+                 // For true ring mod robot, we modulate gain, but here we mod pitch for "wobble"
+                 // Or simple ring mod:
+                 if(currentEffect === 'robot' || wobble > 30) {
+                     // Ring Mod style
+                     lfo.connect(lfoGain);
+                     // Create a gain node for the source to be modulated
+                     const modGain = audioCtx.createGain();
+                     modGain.gain.value = 1.0;
+                     lfoGain.connect(modGain.gain);
+                     lastNode.connect(modGain);
+                     lastNode = modGain;
+                 } else {
+                     // Vibrato style
+                     lfoGain.gain.value = 0.1;
+                     lfo.connect(lfoGain).connect(source.playbackRate);
+                 }
+                 lfo.start();
+             }
+             
+             if (reverbAmt > 0 && impulseBuffer) {
+                 const conv = audioCtx.createConvolver();
+                 conv.buffer = impulseBuffer;
+                 const wet = audioCtx.createGain();
+                 wet.gain.value = reverbAmt / 100;
+                 const dry = audioCtx.createGain();
+                 dry.gain.value = 1 - (reverbAmt/200); 
+                 
+                 // Split path
+                 lastNode.connect(conv);
+                 conv.connect(wet);
+                 wet.connect(voiceGainNode);
+                 
+                 lastNode.connect(dry);
+                 lastNode = dry; 
+             }
+
+             lastNode.connect(voiceGainNode);
+             source.start();
+             activeSourceNode = source;
+        }
+
+        document.getElementById('play-recording-btn').onclick = () => startPlayback(false);
+
+        document.getElementById('stop-all-btn').onclick = () => {
+            if(activeSourceNode) activeSourceNode.stop();
+            if(storyInterval) clearInterval(storyInterval);
+            if(window.studioLoop) clearInterval(window.studioLoop);
+            window.speechSynthesis.cancel();
+        };
+
         // --- STORY MAGIC ---
-        let storyInterval = null;
-        let storyTempo = 500;
         
         document.querySelectorAll('.voice-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -926,10 +1083,13 @@
         document.getElementById('magic-btn').onclick = () => {
             const text = document.getElementById('story-input').value;
             if(!text.trim()) return alert("Write a story first!");
+            
             document.getElementById('view-story').querySelector('.glass-panel').classList.add('hidden');
             document.getElementById('story-player').classList.remove('hidden');
+            
             const display = document.getElementById('karaoke-display');
             display.innerHTML = text.split(' ').map(w => `<span class="karaoke-word">${w}</span>`).join(' ');
+            
             createProceduralBeat(text);
             startStoryLoop();
             startKaraoke(text);
@@ -938,9 +1098,18 @@
         function createProceduralBeat(text) {
             const isHappy = text.includes('happy') || text.includes('fun') || text.includes('sun');
             const isFast = text.includes('run') || text.includes('fast') || text.includes('race');
+            
             storyTempo = isFast ? 300 : (isHappy ? 400 : 600);
-            activeStoryBeat = [ [0, 2], [], [1, 2], [5] ];
-            if(isHappy) activeStoryBeat[1].push(8); else activeStoryBeat[1].push(11); 
+            
+            activeStoryBeat = [
+                [0, 2],         // Beat 1
+                [],             // Beat 2
+                [1, 2],         // Beat 3
+                [5]             // Beat 4
+            ];
+            
+            if(isHappy) activeStoryBeat[1].push(8); 
+            else activeStoryBeat[1].push(11); 
         }
 
         document.getElementById('remix-beat-btn').onclick = () => {
@@ -983,6 +1152,7 @@
             if ('speechSynthesis' in window) {
                 const synth = window.speechSynthesis;
                 synth.cancel();
+
                 const voices = synth.getVoices();
                 let targetVoice = null;
                 const enVoices = voices.filter(v => v.lang.startsWith('en'));
@@ -1000,6 +1170,7 @@
                 phrases.forEach((phrase, index) => {
                     const utterance = new SpeechSynthesisUtterance(phrase.trim());
                     if(targetVoice) utterance.voice = targetVoice;
+
                     if (selectedVoice === 'star') {
                         utterance.pitch = 1.4; utterance.rate = 1.2;
                     } else if (selectedVoice === 'buddy') {
@@ -1007,20 +1178,27 @@
                     } else { 
                         utterance.pitch = 0.8; utterance.rate = 0.9;
                     }
+
                     if (phrase.includes('?')) utterance.pitch += 0.2; 
-                    if (phrase.includes('!')) { utterance.rate += 0.1; utterance.volume = 1; } 
-                    else { utterance.volume = 0.9; }
+                    if (phrase.includes('!')) { utterance.rate += 0.1; utterance.volume = 1; } else { utterance.volume = 0.9; }
+
                     synth.speak(utterance);
                 });
-            } else { alert("Smart Sing not supported on this browser."); }
+
+            } else {
+                alert("Smart Sing not supported on this browser.");
+            }
         };
 
         document.getElementById('export-studio-btn').onclick = () => {
             if(!activeStoryBeat) return;
+            
             document.getElementById('stop-story-btn').click();
             document.querySelector('[data-target="view-studio"]').click();
             alert("Beat loaded into Studio! Playing now...");
+            
             if(window.studioLoop) clearInterval(window.studioLoop);
+            
             let beatIndex = 0;
             window.studioLoop = setInterval(() => {
                 if(appActive) {
@@ -1051,168 +1229,6 @@
             document.getElementById('view-story').querySelector('.glass-panel').classList.remove('hidden');
         };
 
-        // --- CONCERT STAGE ---
-        const stageCanvas = document.getElementById('stage-canvas');
-        const sCtx = stageCanvas.getContext('2d');
-        let stageObjects = [];
-        let activeChar = '🐱';
-        let currentWorld = 'space';
-        
-        function resizeStage() {
-            stageCanvas.width = stageCanvas.offsetWidth;
-            stageCanvas.height = stageCanvas.offsetHeight;
-        }
-        window.addEventListener('resize', resizeStage);
-        resizeStage();
-
-        document.querySelectorAll('.stage-ctrl').forEach(btn => {
-            btn.onclick = () => {
-                const action = btn.dataset.action;
-                const char = btn.dataset.char;
-                if(char) activeChar = (char === 'cat') ? '🐱' : (char === 'robot' ? '🤖' : '👽');
-                if(action) triggerStageEffect(action);
-            };
-        });
-        
-        document.querySelectorAll('.world-btn').forEach(btn => {
-            btn.onclick = () => currentWorld = btn.dataset.world;
-        });
-
-        function triggerStageEffect(type) {
-            if(type === 'confetti' || type === 'beat') {
-                for(let i=0; i<8; i++) stageObjects.push({
-                    type: 'confetti', x: Math.random()*stageCanvas.width, y: 0, 
-                    vy: Math.random()*5+2, color: `hsl(${Math.random()*360}, 100%, 50%)`
-                });
-            }
-            if(type === 'bubbles') {
-                for(let i=0; i<5; i++) stageObjects.push({
-                    type: 'bubble', x: Math.random()*stageCanvas.width, y: stageCanvas.height, 
-                    vy: -(Math.random()*2+1), r: Math.random()*10+5
-                });
-            }
-            if(type === 'fireworks') {
-                stageObjects.push({
-                    type: 'firework', x: Math.random()*stageCanvas.width, y: stageCanvas.height,
-                    targetY: Math.random()*(stageCanvas.height/2), vy: -12, exploded: false, particles: []
-                });
-            }
-        }
-
-        function drawStage() {
-            if(appActive) {
-                requestAnimationFrame(drawStage);
-            } else {
-                setTimeout(drawStage, 500); 
-                return;
-            }
-
-            // Background
-            if(currentWorld === 'space') {
-                 sCtx.fillStyle = '#020617';
-                 sCtx.fillRect(0,0,stageCanvas.width, stageCanvas.height);
-                 if(Math.random() > 0.9) sCtx.fillStyle = '#fff'; else sCtx.fillStyle = 'transparent';
-                 sCtx.fillRect(Math.random()*stageCanvas.width, Math.random()*stageCanvas.height, 2, 2);
-            } else if (currentWorld === 'disco') {
-                 sCtx.fillStyle = `hsl(${Date.now()/50}, 50%, 10%)`;
-                 sCtx.fillRect(0,0,stageCanvas.width, stageCanvas.height);
-            } else { 
-                 sCtx.fillStyle = '#0c4a6e';
-                 sCtx.fillRect(0,0,stageCanvas.width, stageCanvas.height);
-            }
-            
-            // Spotlights
-            sCtx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-            sCtx.beginPath();
-            sCtx.moveTo(0, 0); sCtx.lineTo(stageCanvas.width/3, stageCanvas.height); sCtx.lineTo(0, stageCanvas.height);
-            sCtx.fill();
-            sCtx.beginPath();
-            sCtx.moveTo(stageCanvas.width, 0); sCtx.lineTo(stageCanvas.width*0.66, stageCanvas.height); sCtx.lineTo(stageCanvas.width, stageCanvas.height);
-            sCtx.fill();
-
-            // Character
-            sCtx.font = "80px Arial";
-            sCtx.textAlign = "center";
-            let bounce = dataArray ? dataArray[5] / 8 : 0;
-            sCtx.fillText(activeChar, stageCanvas.width/2, stageCanvas.height - 50 - bounce);
-
-            // Objects
-            stageObjects.forEach((obj, idx) => {
-                if(obj.type === 'confetti') {
-                    sCtx.fillStyle = obj.color;
-                    sCtx.fillRect(obj.x, obj.y, 6, 6);
-                    obj.y += obj.vy;
-                    if(obj.y > stageCanvas.height) stageObjects.splice(idx, 1);
-                }
-                else if(obj.type === 'bubble') {
-                    sCtx.strokeStyle = 'rgba(255,255,255,0.5)';
-                    sCtx.beginPath(); sCtx.arc(obj.x, obj.y, obj.r, 0, Math.PI*2); sCtx.stroke();
-                    obj.y += obj.vy; obj.x += Math.sin(obj.y/20);
-                    if(obj.y < -50) stageObjects.splice(idx, 1);
-                }
-                else if(obj.type === 'firework') {
-                    if(!obj.exploded) {
-                        sCtx.fillStyle = '#fff';
-                        sCtx.fillRect(obj.x, obj.y, 4, 4);
-                        obj.y += obj.vy;
-                        if(obj.y <= obj.targetY) {
-                            obj.exploded = true;
-                            for(let j=0; j<20; j++) obj.particles.push({x: obj.x, y: obj.y, vx: Math.random()*4-2, vy: Math.random()*4-2, life: 1, color: `hsl(${Math.random()*360},100%,50%)`});
-                        }
-                    } else {
-                        obj.particles.forEach(p => {
-                            sCtx.fillStyle = p.color;
-                            sCtx.globalAlpha = p.life;
-                            sCtx.fillRect(p.x, p.y, 3, 3);
-                            sCtx.globalAlpha = 1;
-                            p.x += p.vx; p.y += p.vy; p.life -= 0.02;
-                        });
-                        if(obj.particles[0].life <= 0) stageObjects.splice(idx, 1);
-                    }
-                }
-            });
-        }
-        
-        function drawVisualizer() {
-            if(appActive) {
-                requestAnimationFrame(drawVisualizer);
-            } else {
-                return;
-            }
-            if(!analyser) return;
-            const c = document.getElementById('visualizer');
-            const ctx = c.getContext('2d');
-            analyser.getByteFrequencyData(dataArray);
-            ctx.fillStyle = '#020617'; 
-            ctx.fillRect(0, 0, c.width, c.height);
-            const w = (c.width / dataArray.length) * 2.5;
-            let x = 0;
-            for(let i = 0; i < dataArray.length; i++) {
-                const h = dataArray[i] / 2;
-                ctx.fillStyle = `hsl(${i*2}, 100%, 50%)`;
-                ctx.fillRect(x, c.height - h, w, h);
-                x += w + 1;
-            }
-        }
-
-        document.getElementById('record-btn').onclick = function() {
-            if(!isRecording) {
-                mediaRecorder.start(); isRecording = true;
-                this.classList.add('recording-pulse', 'bg-red-600');
-            } else {
-                mediaRecorder.stop(); isRecording = false;
-                this.classList.remove('recording-pulse', 'bg-red-600');
-            }
-        };
-        document.getElementById('play-recording-btn').onclick = () => {
-             if(!recordedAudioBuffer) return;
-             if(activeSourceNode) activeSourceNode.stop();
-             const src = audioCtx.createBufferSource();
-             src.buffer = recordedAudioBuffer;
-             src.connect(voiceGainNode);
-             src.start();
-             activeSourceNode = src;
-        };
         document.getElementById('stop-all-btn').onclick = () => {
             if(activeSourceNode) activeSourceNode.stop();
             if(storyInterval) clearInterval(storyInterval);
